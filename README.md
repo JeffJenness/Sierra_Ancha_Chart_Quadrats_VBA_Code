@@ -1,7 +1,7 @@
 # Sierra_Ancha_Chart_Quadrats_VBA_Code
 VBA code to create data paper "Cover and density of semi-arid desert grassland patches within Arizona interior chaparral in permanent chart quadrats (1935-2023)"
 
-This repository contains VBA and ArcObjects code used to analyze plant distributions in digitized quadrats near Sierra Ancha Arizona, intermittently over the years 1935 - 1955, and then yearly from 2017 - 2023. This code was used to produce the original data presented in the Data Paper "Cover and density of semi-arid desert grassland patches within Arizona interior chaparral in permanent chart quadrats (1935-2023)" (Moore et al. 2024; see also https://doi.org/...tbd...).
+This repository contains VBA and ArcObjects code used to analyze plant distributions in digitized quadrats near Sierra Ancha Arizona, intermittently over the years 1935 - 1955, and then yearly from 2017 - 2023. This code was used to produce the original data presented in the Data Paper "Cover and density of semi-arid desert grassland plants within Arizona interior chaparral in permanent chart quadrats (1935-2023)" (Moore et al. 2024; see also https://doi.org/...tbd...).
 
 The relevant functions are embedded in larger modules containing other unused functions (14 VBA modules containing 747 functions and 72,608 lines of code). The primary analytical master function is "RunAsBatch" in the module "SierraAnchaAnalysis". This function runs several other functions that do the various steps of the analysis. In particular:
 
