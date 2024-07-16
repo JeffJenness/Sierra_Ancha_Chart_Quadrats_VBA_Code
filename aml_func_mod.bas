@@ -628,6 +628,49 @@ Public Function CreateShapefile2(sPath As String, sName As String, pSpatialRefer
 
 End Function
 
+Public Function TempPathLocation() As String
+
+  Dim sBuffer As String
+  sBuffer = Space(strMAXPATH)
+  If GetTempPath(strMAXPATH, sBuffer) <> 0 Then
+    TempPathLocation = Left$(sBuffer, _
+      InStr(sBuffer, vbNullChar) - 1)
+  Else
+    TempPathLocation = ""
+  End If
+
+End Function
+
+Public Function GetTheUserName() As String
+
+  Dim sBuffer As String
+  Dim sUName As String
+  Dim lSize As Long
+  sBuffer = Space$(255)
+  lSize = Len(sBuffer)
+  Call GetUserName(sBuffer, lSize)
+  If lSize > 0 Then
+    sUName = Left$(sBuffer, lSize)
+  Else
+    sUName = vbNullString
+  End If
+  GetTheUserName = BasicTrimAvenue(sUName, "", Chr(0))     ' NEED TO PEEL OFF THAT LAST ODD CHARACTER
+
+End Function
+
+Public Function BasicTrimAvenue(aString As String, aTrimLeft As String, aTrimRight As String) As String
+
+  Do While (aString <> "") And (InStr(1, aTrimRight, Right(aString, 1), vbTextCompare) > 0)
+    aString = Left(aString, Len(aString) - 1)
+  Loop
+  Do While (aString <> "") And (InStr(1, aTrimLeft, Left(aString, 1), vbTextCompare) > 0)
+    aString = Right(aString, Len(aString) - 1)
+  Loop
+
+  BasicTrimAvenue = aString
+
+End Function
+
 Public Function InsertCommas(InputValue As Variant) As String
 
   Dim theString As String
@@ -753,15 +796,6 @@ Public Function FieldIsString(pTheField As iField) As Boolean
   theFieldType = pTheField.Type
 
   FieldIsString = (theFieldType = esriFieldTypeString)
-
-End Function
-
-Public Function FieldIsShape(pTheField As iField) As Boolean
-
-  Dim theFieldType As esriFieldType
-  theFieldType = pTheField.Type
-
-  FieldIsShape = (theFieldType = esriFieldTypeGeometry)
 
 End Function
 
@@ -1328,25 +1362,6 @@ Public Function PathIsDirectory(strPath As String) As Boolean
   Exit Function
 ErrHandler:
   PathIsDirectory = False
-End Function
-
-Public Function ReturnDir2(strPathName As String) As String
-
-  Dim lngIndex1 As Long
-  Dim lngIndex2 As Long
-  lngIndex1 = InStrRev(strPathName, "\", , vbTextCompare)
-  lngIndex2 = InStrRev(strPathName, "/", , vbTextCompare)
-
-  If lngIndex1 = 0 And lngIndex2 = 0 Then
-    ReturnDir2 = strPathName
-  Else
-    If lngIndex1 = 0 Then
-      ReturnDir2 = Left(strPathName, lngIndex2)
-    Else
-      ReturnDir2 = Left(strPathName, lngIndex1)
-    End If
-  End If
-
 End Function
 
 Public Function ReturnFilename2(strPathName As String) As String

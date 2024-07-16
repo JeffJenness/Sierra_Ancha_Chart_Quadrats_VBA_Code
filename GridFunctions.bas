@@ -22,6 +22,20 @@ Public Enum enumRasterType
    enum_Geodatabase_Type
 End Enum
 
+Public Function OpenRasterWorkspace(sPath As String) As IRasterWorkspace
+
+  Dim pWKSF As IWorkspaceFactory
+  Set pWKSF = New RasterWorkspaceFactory
+
+  Dim pRasterWs As IRasterWorkspace
+  Set pRasterWs = pWKSF.OpenFromFile(sPath, 0)
+  Set OpenRasterWorkspace = pRasterWs
+
+  Set pWKSF = Nothing
+  Set pRasterWs = Nothing
+
+End Function
+
 Public Sub SaveRasterAs(pRasterBandCol As IRasterBandCollection, strPath As String, strName As String, aRasterType As enumRasterType)
 
   Dim pSaveAs As IRasterBandCollection
@@ -122,10 +136,6 @@ Public Function ReturnPixelHeight(pRaster As IRaster) As Double
 
 End Function
 
-Public Function ReturnCellCount(pRaster As IRaster) As Long
-
-End Function
-
 Public Function CalcContinuousGridStats(pRaster As IRaster, pRasterStats As IRasterStatistics, _
       lngNumBins As Long) As esriSystem.IVariantArray
 
@@ -170,134 +180,577 @@ Public Function ReturnPixelWidth(pRaster As IRaster) As Double
 
 End Function
 
-Public Function CalcGridLine(ByVal pStartPolygon As IPolygon, ByVal pEndPolygon As IPolygon, _
-      ByVal pCorPolygon As IPolygon, pCorRaster As IRaster, pEnv As IRasterAnalysisEnvironment, _
-      Optional ShouldClean As Boolean) As IPolyline
+Public Function ReturnPointsByCellSize(pRaster As IRaster, ByVal pLine As IGeometry) As IPointCollection
+  On Error GoTo erh
 
-  Dim pClone As IClone
+  Dim pCurve As ICurve
+  Dim dblLength As Double
 
-  Dim pEnvelope As IEnvelope
-  pEnv.GetExtent esriRasterEnvValue, pEnvelope
-
-  Dim pRasMakerOp As IRasterMakerOp
-  Set pRasMakerOp = New RasterMakerOp
-  GridFunctions.SetSpatialAnalysisSettings pRasMakerOp, pEnv
-
-  Dim pSpRef As ISpatialReference
-  Set pSpRef = pEnv.OutSpatialReference
-
-  If Not (GridFunctions.CompareSpatialReferences(pStartPolygon.SpatialReference, pSpRef)) Then
-    pStartPolygon.Project pSpRef
+  If TypeOf pLine Is ICurve Then
+    Set pCurve = pLine
+    dblLength = pCurve.length
+  Else
+    MsgBox "Invalid geometry type!  Must implement 'ICurve'..."
+    Set ReturnPointsByCellSize = Nothing
+    Exit Function
   End If
-  If Not (GridFunctions.CompareSpatialReferences(pEndPolygon.SpatialReference, pSpRef)) Then
-    pEndPolygon.Project pSpRef
+  Dim pPointCollection As IPointCollection
+
+  Dim pSrcSpRef As ISpatialReference
+  Dim pRasProps As IRasterProps
+  Set pRasProps = pRaster
+  Set pSrcSpRef = pRasProps.SpatialReference
+
+  Dim pTrgSpRef As ISpatialReference
+  Set pTrgSpRef = pLine.SpatialReference
+
+  If Not GridFunctions.CompareSpatialReferences(pSrcSpRef, pTrgSpRef) Then
+    pLine.Project pSrcSpRef
   End If
 
-  Dim pPoints As IPointCollection
-  Set pPoints = GridFunctions.ReturnPointsByCellSize(pCorRaster, pEndPolygon)
-  Dim anIndex As Long
+  Dim dblCellSize As Double
+  dblCellSize = GridFunctions.ReturnCellSize(pRaster)
+  Dim NumPoints As Long
+  NumPoints = Int(dblLength / dblCellSize) + 1
 
-  Dim pDistanceOp As IDistanceOp
-  Set pDistanceOp = New RasterDistanceOp
+  Dim pMpt As IMultipoint
+  Dim pSegCol As ISegmentCollection
+  Set pSegCol = pLine
+  Set pMpt = GridFunctions.EllipticArcToPolygon2(pSegCol, NumPoints)
+  Set pPointCollection = pMpt
 
-  SetSpatialAnalysisSettings pDistanceOp, pEnv
+  Set ReturnPointsByCellSize = pPointCollection
 
-  Dim pBaseRaster As IRaster
-  Set pBaseRaster = pRasMakerOp.MakeConstant(1, True)
-  Dim pSourceDataset As IRaster
-  Set pSourceDataset = ClipRasterToPolygon(pBaseRaster, pStartPolygon, True, , , pEnv)
+  Exit Function
 
-  Dim pCostDataset As IGeoDataset
+  Set pCurve = Nothing
+  Set pPointCollection = Nothing
+  Set pSrcSpRef = Nothing
+  Set pRasProps = Nothing
+  Set pTrgSpRef = Nothing
+  Set pMpt = Nothing
+  Set pSegCol = Nothing
 
-  Dim pOutputRaster As IGeoDataset
+erh:
+  If (Erl <> 0) Then
+    MsgBox "Failed in ReturnPointsByCellSize: " & err.Description & vbCrLf & "Error at line " & CStr(Erl)
+  Else
+    MsgBox "Failed in ReturnPointsByCellSize: " & err.Description & vbCrLf & "No Line Number Available..."
+  End If
 
-  Set pOutputRaster = pDistanceOp.CostDistanceFull(pSourceDataset, pCorRaster, True, True, False)
+End Function
 
-  Dim pRasterBandCollection As IRasterBandCollection
-  Set pRasterBandCollection = pOutputRaster
-  Dim pDistBand As IRasterBand        ' DISTANCE BAND
-  Set pDistBand = pRasterBandCollection.Item(0)
-  Dim pDistRaster As IRasterBandCollection
-  Set pDistRaster = New Raster
-  pDistRaster.Add pDistBand, 0
+Public Function CompareSpatialReferences(ByVal pSourceSR As ISpatialReference, ByVal pTargetSR As ISpatialReference) As Boolean
 
-  Dim pDistAsRaster As IRaster
-  Set pDistAsRaster = pDistRaster
+  On Error GoTo erh
 
-  Dim pBacklinkBand As IRasterBand    ' BACKLINK BAND
-  Set pBacklinkBand = pRasterBandCollection.Item(1)
-  Dim pBacklinkRaster As IRasterBandCollection
-  Set pBacklinkRaster = New Raster
-  pBacklinkRaster.Add pBacklinkBand, 0
-
-  Dim pPathCollection As IGeometryCollection
-  Set pPathCollection = pDistanceOp.CostPathAsPolyline(pPoints, pDistAsRaster, pBacklinkRaster)
-  If pPathCollection.GeometryCount = 0 Then
-    Dim pEmptyLine As IPolyline
-    Set pEmptyLine = New Polyline
-    pEmptyLine.SetEmpty
-    Set CalcGridLine = pEmptyLine
+  If pSourceSR Is Nothing And pTargetSR Is Nothing Then
+    CompareSpatialReferences = True
+    Exit Function
+  ElseIf pSourceSR Is Nothing Or pTargetSR Is Nothing Then
+    CompareSpatialReferences = False
     Exit Function
   End If
 
-  Dim pPath As IPolyline
-  Dim pMinPath As IPolyline
-  Dim dblShortDist As Double
-  Set pPath = pPathCollection.Geometry(0)
-  Set pMinPath = pPath
-  dblShortDist = pPath.length
-  If pPathCollection.GeometryCount > 1 Then
-    For anIndex = 1 To pPathCollection.GeometryCount - 1
-      Set pPath = pPathCollection.Geometry(anIndex)
-      If pPath.length < dblShortDist Then
-        Set pMinPath = pPath
-        dblShortDist = pPath.length
-      End If
-    Next anIndex
+  Dim pSourceClone As IClone
+  Dim pTargetClone As IClone
+  Dim bSREqual As Boolean
+
+  Set pSourceClone = pSourceSR
+  Set pTargetClone = pTargetSR
+
+  bSREqual = pSourceClone.IsEqual(pTargetClone)
+
+  If Not bSREqual Then
+    CompareSpatialReferences = False
+    Exit Function
   End If
 
-  Dim pBoundary As IPolyline
-  Dim pTopoOp As ITopologicalOperator
-  Set pTopoOp = pCorPolygon
-  Set pBoundary = pTopoOp.Boundary
+  Dim pSourceSR2 As ISpatialReference2
+  Dim bXYIsEqual As Boolean
 
-  Dim pCleanLine As IPolyline
-  If (ShouldClean) Then
-    Set pCleanLine = CleanPolyline(pMinPath, pBoundary)
+  Set pSourceSR2 = pSourceSR
+  bXYIsEqual = pSourceSR2.IsXYPrecisionEqual(pTargetSR)
+
+  If Not bXYIsEqual Then
+    CompareSpatialReferences = False
+    Exit Function
+  End If
+
+  CompareSpatialReferences = True
+
+  Set pSourceClone = Nothing
+  Set pTargetClone = Nothing
+  Set pSourceSR2 = Nothing
+
+  Exit Function
+erh:
+    MsgBox "Failed in CompareSpatialReferences: " & err.Description
+End Function
+
+Sub SetSpatialAnalysisSettings(TargetEnv As IRasterAnalysisEnvironment, _
+                               SourceEnv As IRasterAnalysisEnvironment)
+    On Error GoTo erh
+    If Not SourceEnv Is Nothing Then
+        Set TargetEnv.OutWorkspace = SourceEnv.OutWorkspace
+        If Not SourceEnv.OutSpatialReference Is Nothing Then
+            Set TargetEnv.OutSpatialReference = SourceEnv.OutSpatialReference
+        End If
+        TargetEnv.DefaultOutputRasterPrefix = SourceEnv.DefaultOutputRasterPrefix
+        TargetEnv.DefaultOutputVectorPrefix = SourceEnv.DefaultOutputVectorPrefix
+        If Not SourceEnv.Mask Is Nothing Then
+            Set TargetEnv.Mask = SourceEnv.Mask
+        End If
+        Dim nCellSize As Double
+        SourceEnv.GetCellSize 3, nCellSize
+        If nCellSize <> 0 Then
+            TargetEnv.SetCellSize 3, nCellSize
+        End If
+        Dim pExtent As IEnvelope
+        SourceEnv.GetExtent 3, pExtent
+        If Not pExtent Is Nothing Then
+            TargetEnv.SetExtent 3, pExtent
+        End If
+        TargetEnv.VerifyType = SourceEnv.VerifyType
+    End If
+    Exit Sub
+
+    Set pExtent = Nothing
+
+erh:
+    MsgBox "Failed in SetSpatialAnalysisSettings: " & err.Description
+End Sub
+
+Public Function ClipRasterToPolygon(pRaster As IRaster, ByVal pPolygon As IPolygon, SaveInside As Boolean, _
+      Optional ByVal pClipEnvelope As IEnvelope, Optional CellSize As Double, _
+      Optional ByVal pEnv As IRasterAnalysisEnvironment, Optional booShowProgress As Boolean, _
+      Optional pApp As IApplication) As IRaster
+
+  If booShowProgress Then
+    Dim pSBar As IStatusBar
+    Set pSBar = pApp.StatusBar
+    pSBar.ProgressBar.position = 1
+    Dim pPro As IStepProgressor
+    Set pPro = pSBar.ProgressBar
+  End If
+
+  Dim booWorkingWithCurves As Boolean
+  Dim pSegmentCollectionCurves As ISegmentCollection
+  Set pSegmentCollectionCurves = pPolygon
+  Dim pSegmentCurve As ISegment
+  Set pSegmentCurve = pSegmentCollectionCurves.Segment(0)
+  Dim pGeometryTypeA As esriGeometryType
+  pGeometryTypeA = pSegmentCurve.GeometryType
+
+  booWorkingWithCurves = (pGeometryTypeA = esriGeometryBezier3Curve) Or _
+    (pGeometryTypeA = esriGeometryCircularArc) Or _
+    (pGeometryTypeA = esriGeometryEllipticArc)
+
+  If booWorkingWithCurves Then
+    Dim pNewPoints As IPointCollection
+    Set pNewPoints = GridFunctions.EllipticArcToPolygon2(pSegmentCollectionCurves, 100)
+    Dim pNewPolygon As IPointCollection
+    Set pNewPolygon = New Polygon
+    pNewPolygon.SetPointCollection pNewPoints
+    Set pPolygon = pNewPolygon
+  End If
+
+  Dim pExtractionOp As IExtractionOp
+  Set pExtractionOp = New RasterExtractionOp
+
+  Dim pRastAnalysisEnv As IRasterAnalysisEnvironment
+  Dim pSpatialReference As ISpatialReference
+  Dim pPolySpatRef As ISpatialReference
+  Set pPolySpatRef = pPolygon.SpatialReference
+  Dim SpatRefSame As Boolean
+  Dim pEnvelope As IEnvelope
+
+  If Not pEnv Is Nothing Then
+    Set pRastAnalysisEnv = pEnv
+    Set pSpatialReference = pRastAnalysisEnv.OutSpatialReference
+
+    SpatRefSame = CompareSpatialReferences(pSpatialReference, pPolySpatRef)
+    If Not SpatRefSame Then pPolygon.Project pSpatialReference
+    pEnv.GetExtent esriRasterEnvValue, pEnvelope
+
   Else
-    Set pCleanLine = pMinPath
+
+    Set pRastAnalysisEnv = pExtractionOp
+    pRastAnalysisEnv.RestoreToPreviousDefaultEnvironment
+
+    Dim theEnvType As esriRasterEnvSettingEnum
+    Dim theExtEnvType As esriRasterEnvSettingEnum
+    Dim pTempEnv As IEnvelope
+    Dim theCellSize As Double
+    pRastAnalysisEnv.GetCellSize theEnvType, theCellSize
+    pRastAnalysisEnv.GetExtent theExtEnvType, pTempEnv
+    Dim pRasterAnalysisProps As IRasterAnalysisProps
+    Dim pRasterProps As IRasterProps
+        Set pRasterAnalysisProps = pRaster
+        Set pRasterProps = pRaster
+
+    Set pSpatialReference = pRasterProps.SpatialReference
+
+    SpatRefSame = CompareSpatialReferences(pSpatialReference, pPolySpatRef)
+    If Not SpatRefSame Then pPolygon.Project pSpatialReference
+
+    If CellSize <= 0 Then
+      theCellSize = pRasterAnalysisProps.PixelHeight
+      theEnvType = pRastAnalysisEnv.VerifyType
+    Else
+      theCellSize = CellSize
+      theEnvType = esriRasterEnvValue
+    End If
+
+    Dim pTopoOp As ITopologicalOperator2
+    If pClipEnvelope Is Nothing Then
+      Dim pPolyEnvelope As IEnvelope
+          Set pPolyEnvelope = pPolygon.Envelope
+      Dim pRastEnvelope As IEnvelope
+          Set pRastEnvelope = pRasterProps.Extent
+          Set pTopoOp = pPolyEnvelope
+          pTopoOp.IsKnownSimple = False
+          pTopoOp.Simplify
+
+      Set pEnvelope = pTopoOp.Intersect(pPolyEnvelope, esriGeometry2Dimension)
+    Else
+      SpatRefSame = CompareSpatialReferences(pSpatialReference, pClipEnvelope.SpatialReference)
+      If Not SpatRefSame Then
+        pClipEnvelope.Project pSpatialReference
+      End If
+      Set pEnvelope = pClipEnvelope.Envelope
+    End If
+
+    pRastAnalysisEnv.SetCellSize theEnvType, theCellSize
+    pRastAnalysisEnv.SetExtent esriRasterEnvValue, pEnvelope
+    Set pRastAnalysisEnv.OutSpatialReference = pSpatialReference
   End If
 
-  Set pDistAsRaster = Nothing
-  Set pBacklinkRaster = Nothing
-  pCleanLine.ReverseOrientation
-  Set pCleanLine.SpatialReference = pEnv.OutSpatialReference
-  Set CalcGridLine = pCleanLine
+  DoEvents
 
-  Set pClone = Nothing
+  Dim pIntPolygon As IPolygon4
+  Set pTopoOp = pPolygon
+  pTopoOp.IsKnownSimple = False
+  pTopoOp.Simplify
+  Set pIntPolygon = pTopoOp.Intersect(pEnvelope, esriGeometry2Dimension)
+  Set pIntPolygon = pPolygon
+  Set pIntPolygon.SpatialReference = pPolygon.SpatialReference
+
+  Set pTopoOp = pIntPolygon
+  pTopoOp.IsKnownSimple = False
+  pTopoOp.Simplify
+
+  Dim pGeometryCollection As IGeometryCollection
+  Dim pExtRing As IGeometryCollection
+  Dim pIntRingBag As IGeometryCollection
+  Set pGeometryCollection = pIntPolygon.ConnectedComponentBag
+  Dim pIntGeoCol As IGeometryCollection
+  Dim pIntPoly As IPolygon4
+  Dim pOutGeoCol As IGeometryCollection
+  Dim pOutPoly As IPolygon4
+
+  Dim pSubPoly As IPolygon4
+  Dim pSubRing As IRing
+  Dim anIndex As Long
+  Dim anIndex2 As Long
+
+  Dim pClipRaster As IRaster
+  Dim pOuterRaster As IRaster
+  Dim pInnerRaster As IRaster
+
+  Dim pNegativeGeometryCollection As IGeometryCollection
+  Dim anIndex3 As Long
+  Dim pNegPoly As IPolygon4
+
+  Dim pRasMakerOp As IRasterMakerOp
+  Set pRasMakerOp = New RasterMakerOp
+  SetSpatialAnalysisSettings pRasMakerOp, pRastAnalysisEnv
+  Dim pCondOp As IConditionalOp
+  Set pCondOp = New RasterConditionalOp
+  SetSpatialAnalysisSettings pCondOp, pRastAnalysisEnv
+  Dim pLogicOp As ILogicalOp
+  Set pLogicOp = New RasterMathOps
+  SetSpatialAnalysisSettings pLogicOp, pRastAnalysisEnv
+  Dim pMathOp As IMathOp
+  Set pMathOp = New RasterMathOps
+  SetSpatialAnalysisSettings pMathOp, pRastAnalysisEnv
+
+  Dim pRasLayer As IRasterLayer
+  Dim pTestGeometry As IGeometry
+  Dim pTestGeoColl As IGeometryCollection
+  Dim pSegmentCollection1 As ISegmentCollection
+  Dim pSegment1 As ISegment
+  Dim pGeometryType As esriGeometryType
+  Dim pEllArcPolygon As IPolygon4
+
+  Dim pFinalGrid As IRaster
+  Set pFinalGrid = pRasMakerOp.MakeConstant(0, True)
+  Set pClipRaster = pRasMakerOp.MakeConstant(1, True)
+
+  If booShowProgress Then
+    pPro.MaxRange = pGeometryCollection.GeometryCount + 2
+    pPro.StepValue = 1
+    pPro.Show
+  End If
+
+  DoEvents
+
+  For anIndex = 0 To pGeometryCollection.GeometryCount - 1
+
+    Set pSubPoly = pGeometryCollection.Geometry(anIndex)
+    Set pExtRing = pSubPoly.ExteriorRingBag
+    Set pSubRing = pExtRing.Geometry(0)
+    Set pOutGeoCol = New Polygon
+    pOutGeoCol.AddGeometry pSubRing
+    Set pOutPoly = pOutGeoCol
+    Set pTopoOp = pOutPoly
+    pTopoOp.IsKnownSimple = False
+    pTopoOp.Simplify
+
+    Set pSegmentCollection1 = pOutPoly
+    Set pSegment1 = pSegmentCollection1.Segment(0)
+    pGeometryType = pSegment1.GeometryType
+
+    If pGeometryType = esriGeometryCircularArc Then
+      Set pOuterRaster = pExtractionOp.Circle(pClipRaster, pSegment1, Not SaveInside)
+    ElseIf pGeometryType = esriGeometryEllipticArc Then
+      Set pEllArcPolygon = EllipticArcToPolygon(pSegmentCollection1, 75)
+      Set pOuterRaster = pExtractionOp.Polygon(pClipRaster, pEllArcPolygon, Not SaveInside)
+    ElseIf pGeometryType = esriGeometryEnvelope Then
+      Set pOuterRaster = pExtractionOp.Rectangle(pClipRaster, pOutPoly, Not SaveInside)
+    Else
+      Set pOuterRaster = pExtractionOp.Polygon(pClipRaster, pOutPoly, Not SaveInside)
+    End If
+    Set pOuterRaster = pLogicOp.IsNull(pOuterRaster)
+
+    If pSubPoly.InteriorRingCount(pSubRing) > 0 Then
+      Set pIntRingBag = pSubPoly.InteriorRingBag(pSubRing)
+
+      For anIndex2 = 0 To pIntRingBag.GeometryCount - 1
+        Set pIntGeoCol = New Polygon
+        pIntGeoCol.AddGeometry pIntRingBag.Geometry(anIndex2)
+        Set pIntPoly = pIntGeoCol
+        Set pTopoOp = pIntPoly
+        pTopoOp.IsKnownSimple = False
+        pTopoOp.Simplify
+
+        Set pSegmentCollection1 = pIntPoly
+        Set pSegment1 = pSegmentCollection1.Segment(0)
+        pGeometryType = pSegment1.GeometryType
+
+        If pGeometryType = esriGeometryCircularArc Then
+          Set pInnerRaster = pExtractionOp.Circle(pClipRaster, pSegment1, SaveInside)
+          Set pInnerRaster = pLogicOp.IsNull(pInnerRaster)
+          Set pOuterRaster = pMathOp.Times(pInnerRaster, pOuterRaster)
+        ElseIf pGeometryType = esriGeometryEllipticArc Then
+          Set pEllArcPolygon = EllipticArcToPolygon(pSegmentCollection1, 75)
+          Set pInnerRaster = pExtractionOp.Polygon(pClipRaster, pEllArcPolygon, SaveInside)
+          Set pInnerRaster = pLogicOp.IsNull(pInnerRaster)
+          Set pOuterRaster = pMathOp.Times(pInnerRaster, pOuterRaster)
+        ElseIf pGeometryType = esriGeometryEnvelope Then
+          Set pInnerRaster = pExtractionOp.Rectangle(pClipRaster, pIntPoly, SaveInside)
+          Set pInnerRaster = pLogicOp.IsNull(pInnerRaster)
+          Set pOuterRaster = pMathOp.Times(pInnerRaster, pOuterRaster)
+        Else
+          Set pNegativeGeometryCollection = pIntPoly.ConnectedComponentBag
+          For anIndex3 = 0 To pNegativeGeometryCollection.GeometryCount - 1
+            Set pNegPoly = pNegativeGeometryCollection.Geometry(anIndex3)
+            Set pTopoOp = pNegPoly
+            pTopoOp.IsKnownSimple = False
+            pTopoOp.Simplify
+            Set pInnerRaster = pExtractionOp.Polygon(pClipRaster, pNegPoly, SaveInside)
+            Set pInnerRaster = pLogicOp.IsNull(pInnerRaster)
+            Set pOuterRaster = pMathOp.Times(pInnerRaster, pOuterRaster)
+          Next anIndex3
+        End If
+
+        DoEvents
+      Next anIndex2
+
+    End If
+
+    Set pFinalGrid = pMathOp.Plus(pFinalGrid, pOuterRaster)
+    If booShowProgress Then
+      pPro.Step
+    End If
+    DoEvents
+  Next anIndex
+
+  Set pFinalGrid = pCondOp.SetNull(pLogicOp.EqualTo(pFinalGrid, pRasMakerOp.MakeConstant(0, True)), pFinalGrid)
+  If booShowProgress Then
+    pPro.Step
+  End If
+  Set ClipRasterToPolygon = pMathOp.Times(pFinalGrid, pRaster)
+  If booShowProgress Then
+    pPro.Step
+  End If
+
+  DoEvents
+
+  pRastAnalysisEnv.RestoreToPreviousDefaultEnvironment
+
+  If booShowProgress Then
+    pPro.Hide
+  End If
+
+  Set pSBar = Nothing
+  Set pPro = Nothing
+  Set pSegmentCollectionCurves = Nothing
+  Set pSegmentCurve = Nothing
+  Set pNewPoints = Nothing
+  Set pNewPolygon = Nothing
+  Set pExtractionOp = Nothing
+  Set pRastAnalysisEnv = Nothing
+  Set pSpatialReference = Nothing
+  Set pPolySpatRef = Nothing
   Set pEnvelope = Nothing
-  Set pRasMakerOp = Nothing
-  Set pSpRef = Nothing
-  Set pPoints = Nothing
-  Set pDistanceOp = Nothing
-  Set pBaseRaster = Nothing
-  Set pSourceDataset = Nothing
-  Set pCostDataset = Nothing
-  Set pOutputRaster = Nothing
-  Set pRasterBandCollection = Nothing
-  Set pDistBand = Nothing
-  Set pDistRaster = Nothing
-  Set pDistAsRaster = Nothing
-  Set pBacklinkBand = Nothing
-  Set pBacklinkRaster = Nothing
-  Set pPathCollection = Nothing
-  Set pEmptyLine = Nothing
-  Set pPath = Nothing
-  Set pMinPath = Nothing
-  Set pBoundary = Nothing
+  Set pTempEnv = Nothing
+  Set pRasterAnalysisProps = Nothing
+  Set pRasterProps = Nothing
   Set pTopoOp = Nothing
-  Set pCleanLine = Nothing
+  Set pPolyEnvelope = Nothing
+  Set pRastEnvelope = Nothing
+  Set pIntPolygon = Nothing
+  Set pGeometryCollection = Nothing
+  Set pExtRing = Nothing
+  Set pIntRingBag = Nothing
+  Set pIntGeoCol = Nothing
+  Set pIntPoly = Nothing
+  Set pOutGeoCol = Nothing
+  Set pOutPoly = Nothing
+  Set pSubPoly = Nothing
+  Set pSubRing = Nothing
+  Set pClipRaster = Nothing
+  Set pOuterRaster = Nothing
+  Set pInnerRaster = Nothing
+  Set pNegativeGeometryCollection = Nothing
+  Set pNegPoly = Nothing
+  Set pRasMakerOp = Nothing
+  Set pCondOp = Nothing
+  Set pLogicOp = Nothing
+  Set pMathOp = Nothing
+  Set pRasLayer = Nothing
+  Set pTestGeometry = Nothing
+  Set pTestGeoColl = Nothing
+  Set pSegmentCollection1 = Nothing
+  Set pSegment1 = Nothing
+  Set pEllArcPolygon = Nothing
+  Set pFinalGrid = Nothing
 
+End Function
+
+Public Function EllipticArcToPolygon2(SegCollection As ISegmentCollection, NumVertices As Long) As IMultipoint
+
+On Error GoTo erh
+
+  Dim pCurve As ICurve
+  Dim pGeometry As IGeometry
+
+  Dim anIndex As Long
+  Dim lngSegCount As Long
+  lngSegCount = SegCollection.SegmentCount - 1
+  Dim theLength As Double
+  theLength = 0
+  Dim theTestLength As Double
+  Dim lngLengths() As Long
+  ReDim lngLengths(lngSegCount)
+  For anIndex = 0 To lngSegCount
+    theTestLength = SegCollection.Segment(anIndex).length
+    theLength = theLength + theTestLength
+    lngLengths(anIndex) = theTestLength
+  Next anIndex
+
+  Dim pProportion As Double
+  Dim lngVertices() As Long
+  Dim lngNumVertices As Long
+  ReDim lngVertices(lngSegCount)
+  For anIndex = 0 To lngSegCount
+    lngNumVertices = Int((lngLengths(anIndex) / theLength) * NumVertices)
+    If lngNumVertices < 8 Then lngNumVertices = 8
+    lngVertices(anIndex) = lngNumVertices
+  Next anIndex
+
+  Dim pMpt As IPointCollection
+  Set pMpt = New Multipoint
+  Dim pPoint As IPoint
+  Set pPoint = New Point
+  Dim pClone As IClone
+
+  Dim pRatio As Double
+  Dim anIndex2 As Long
+
+  For anIndex = 0 To lngSegCount
+    lngNumVertices = lngVertices(anIndex)
+    pRatio = 1 / lngNumVertices
+    Set pCurve = SegCollection.Segment(anIndex)
+
+    For anIndex2 = 0 To lngNumVertices
+      pCurve.QueryPoint 0, (pRatio * anIndex2), True, pPoint
+      Set pClone = pPoint
+
+      pMpt.AddPoint pClone.Clone
+    Next anIndex2
+  Next anIndex
+
+  Set EllipticArcToPolygon2 = pMpt
+
+  Set pCurve = Nothing
+  Set pGeometry = Nothing
+  Set pMpt = Nothing
+  Set pPoint = Nothing
+  Set pClone = Nothing
+
+    Exit Function
+
+erh:
+    MsgBox "Failed in EllipticArcToPolygon2: " & err.Description
+End Function
+
+Public Function DistributePointsAlongShape(pCurve As ICurve, SeparationDistance As Double) As IPointCollection
+
+On Error GoTo erh
+
+  Dim anIndex As Long
+  Dim theLength As Double
+  theLength = pCurve.length
+
+  Dim pMpt As IPointCollection
+  Set pMpt = New Multipoint
+  Dim pPoint As IPoint
+  Set pPoint = New Point
+  Dim pClone As IClone
+
+  Dim dblRatio As Double
+  dblRatio = SeparationDistance / theLength
+
+  Dim theCurrentDist As Double
+  theCurrentDist = 0
+
+  Do While theCurrentDist < 1
+    pCurve.QueryPoint esriNoExtension, theCurrentDist, True, pPoint
+    Set pClone = pPoint
+    pMpt.AddPoint pClone.Clone
+    theCurrentDist = theCurrentDist + dblRatio
+  Loop
+  pCurve.QueryPoint esriNoExtension, 1, True, pPoint
+  Set pClone = pPoint
+  pMpt.AddPoint pClone.Clone
+
+  Dim pGeometry As IGeometry
+  Set pGeometry = pMpt
+  Set pGeometry.SpatialReference = pCurve.SpatialReference
+
+  Set DistributePointsAlongShape = pMpt
+
+  Set pMpt = Nothing
+  Set pPoint = Nothing
+  Set pClone = Nothing
+  Set pGeometry = Nothing
+
+    Exit Function
+
+erh:
+    MsgBox "Failed in DistributePointsAlongShape: " & err.Description
 End Function
 
 Public Function CellValues(pPoints As IPointCollection, pRaster As IRaster) As esriSystem.IVariantArray
@@ -383,6 +836,83 @@ Public Function CellValues(pPoints As IPointCollection, pRaster As IRaster) As e
   Set pOrigin = Nothing
   Set pPoint = Nothing
   Set pOutArray = Nothing
+
+End Function
+
+Public Function CellValue(pPoint As IPoint, pRaster As IRaster) As Variant
+
+    Dim pRP As IRasterProps
+    Set pRP = pRaster
+
+    Dim dblCellSize As Double
+    dblCellSize = ReturnCellSize(pRaster)
+
+    Dim pExtent As IEnvelope
+    Set pExtent = pRP.Extent
+    Dim X1 As Double, Y1 As Double, X2 As Double, Y2 As Double
+    pExtent.QueryCoords X1, Y1, X2, Y2
+
+    If pPoint.x < X1 Or pPoint.x > X2 Or pPoint.Y < Y1 Or pPoint.Y > Y2 Then
+      CellValue = Null
+      Exit Function
+    End If
+
+    Dim pCellPoint As IPoint  'Get dx dy from left-top
+    Dim dx As Double, dy As Double
+    dx = pPoint.x - X1
+    dy = Y2 - pPoint.Y
+
+    Dim nX As Double, ny As Double
+    nX = dx / dblCellSize
+    ny = dy / dblCellSize
+
+    Dim iX As Long, iY As Long
+    iX = Int(nX)
+    iY = Int(ny)
+
+    If (iX < 0) Then iX = 0
+    If (iY < 0) Then iY = 0
+    If (iX > pRP.Width - 1) Then
+      iX = pRP.Width - 1
+    End If
+    If (iY > pRP.Height - 1) Then
+      iY = pRP.Height - 1
+    End If
+
+    Set pCellPoint = New Point
+    pCellPoint.PutCoords CDbl(iX), CDbl(iY)
+
+    Dim pPB As IPixelBlock3
+    Dim dWidth As Double, dHeight As Double
+    dWidth = pRP.Width
+    dHeight = pRP.Height
+
+    Dim pPnt As IPnt
+    Set pPnt = New Pnt
+    pPnt.SetCoords dWidth, dHeight
+
+    Dim pOrigin As IPnt
+    Set pOrigin = New Pnt
+    pOrigin.SetCoords 0, 0
+
+    Set pPB = pRaster.CreatePixelBlock(pPnt)
+
+    pRaster.Read pOrigin, pPB
+    Dim vCellValue As Variant
+    vCellValue = pPB.GetVal(0, iX, iY)
+    Debug.Print "From function..." & vCellValue
+    If IsEmpty(vCellValue) Then
+      CellValue = Null
+    Else
+      CellValue = CDbl(vCellValue)
+    End If
+
+  Set pRP = Nothing
+  Set pExtent = Nothing
+  Set pCellPoint = Nothing
+  Set pPB = Nothing
+  Set pPnt = Nothing
+  Set pOrigin = Nothing
 
 End Function
 
@@ -920,6 +1450,213 @@ ClearMemory:
   vCellValueSW = Null
 End Function
 
+Public Function CellValues4CellInterp_ByNumbers(dblArray() As Double, pRaster As IRaster, _
+    dblCellSizeX As Double, dblCellSizeY As Double, X1 As Double, X2 As Double, _
+    Y1 As Double, Y2 As Double, lngRastWidth As Long, lngRastHeight As Long, _
+    Optional lngBandIndex As Long = 0) As Variant()
+
+    Dim dblHalfCellX As Double
+    dblHalfCellX = dblCellSizeX / 2
+    Dim dblHalfCellY As Double
+    dblHalfCellY = dblCellSizeY / 2
+
+    Dim pPB As IPixelBlock3
+
+    Dim pPnt As IPnt
+    Set pPnt = New Pnt
+    pPnt.SetCoords 2, 2
+    Set pPB = pRaster.CreatePixelBlock(pPnt)
+
+    Dim pOrigin As IPnt
+
+    Dim lngIndex As Long
+    Dim dblCellValue As Double
+    Dim dx As Double, dy As Double
+    Dim nX As Double, ny As Double
+    Dim dblXRemainder As Double, dblYRemainder As Double
+    Dim iX As Long, iY As Long
+    Dim lngMaxX As Long, lngMaxY As Long
+
+    lngMaxX = lngRastWidth - 1
+    lngMaxY = lngRastHeight - 1
+
+    Dim bytQuadrant As Byte       ' 1 FOR NE, 2 FOR NW, 3 FOR SW, 4 FOR SE
+    Dim varInterpVal As Variant
+
+    Dim dblPropX As Double
+    Dim dblPropY As Double
+
+    Dim varReturn() As Variant
+    ReDim varReturn(UBound(dblArray, 2))
+
+    Dim vCellValueNE As Variant
+    Dim vCellValueNW As Variant
+    Dim vCellValueSE As Variant
+    Dim vCellValueSW As Variant
+
+    Dim booIsNull As Boolean
+    Dim dblWestProp As Double
+    Dim dblEastProp As Double
+    Dim dblCoordX As Double
+    Dim dblCoordY As Double
+
+    For lngIndex = 0 To UBound(dblArray, 2)
+      dblCoordX = dblArray(0, lngIndex)
+      dblCoordY = dblArray(1, lngIndex)
+      If dblCoordX < X1 Or dblCoordX > X2 Or dblCoordY < Y1 Or dblCoordY > Y2 Then
+        varReturn(lngIndex) = Null
+      Else
+
+        dx = dblCoordX - X1
+        dy = Y2 - dblCoordY
+
+        nX = dx / dblCellSizeX
+        ny = dy / dblCellSizeY
+
+        iX = Int(nX)
+        iY = Int(ny)
+
+        If (iX < 0) Then iX = 0
+        If (iY < 0) Then iY = 0
+        If (iX > lngMaxX) Then
+          iX = lngMaxX
+        End If
+        If (iY > lngMaxY - 1) Then
+          iY = lngMaxY - 1
+        End If
+
+        dblXRemainder = (nX - iX) * dblCellSizeX
+        dblYRemainder = (ny - iY) * dblCellSizeY
+
+        If dblYRemainder < dblHalfCellY Then                  ' ON NORTH SIDE OF CELL, SOUTH HALF OF PIXEL BLOCK
+          dblPropY = (dblYRemainder + dblHalfCellY) / dblCellSizeY
+          If dblXRemainder > dblHalfCellX Then                ' ON EAST SIDE OF CELL, WEST HALF OF PIXEL BLOCK
+            bytQuadrant = 1                                   ' ON NORTHEAST CORNER OF CELL, SOUTHWEST CORNER OF PIXEL BLOCK
+            dblPropX = 1 - ((dblXRemainder - dblHalfCellX) / dblCellSizeX)
+          Else                                                ' ON WEST SIDE OF CELL, EAST HALF OF PIXEL BLOCK
+            bytQuadrant = 2                                   ' ON NORTHWEST CORNER OF CELL, SOUTHEAST CORNER OF PIXEL BLOCK
+            dblPropX = (dblHalfCellX + dblXRemainder) / dblCellSizeX
+          End If
+        Else                                                  ' ON SOUTH SIDE OF CELL, NORTH HALF OF PIXEL BLOCK
+          dblPropY = 1 - ((dblYRemainder - dblHalfCellY) / dblCellSizeY)
+          If dblXRemainder > dblHalfCellX Then                ' ON EAST SIDE, WEST HALF OF PIXEL BLOCK
+            bytQuadrant = 4                                   ' ON SOUTHEAST CORNER OF CELL, NORTHWEST CORNER OF PIXEL BLOCK
+            dblPropX = 1 - ((dblXRemainder - dblHalfCellX) / dblCellSizeX)
+          Else                                                ' ON WEST SIDE OF CELL, EAST HALF OF PIXEL BLOCK
+            bytQuadrant = 3                                   ' ON SOUTHWEST CORNER OF CELL, NORTHEAST CORNER OF PIXEL BLOCK
+            dblPropX = (dblHalfCellX + dblXRemainder) / dblCellSizeX
+          End If
+        End If
+
+        Set pOrigin = New Pnt
+
+        booIsNull = False
+        Select Case bytQuadrant
+          Case 1              ' NORTHEAST                =================
+            If iX = lngMaxX Or iY = 0 Then
+              booIsNull = True
+            Else
+              pOrigin.SetCoords iX, iY - 1
+              pRaster.Read pOrigin, pPB
+              vCellValueNW = pPB.GetVal(lngBandIndex, 0, 0)
+              vCellValueSW = pPB.GetVal(lngBandIndex, 0, 1)
+              vCellValueNE = pPB.GetVal(lngBandIndex, 1, 0)
+              vCellValueSE = pPB.GetVal(lngBandIndex, 1, 1)
+              If IsCellNaN(vCellValueNW) Or IsCellNaN(vCellValueNE) Or IsCellNaN(vCellValueSW) Or _
+                IsCellNaN(vCellValueSE) Or IsEmpty(vCellValueNW) Or IsEmpty(vCellValueNE) Or _
+                IsEmpty(vCellValueSW) Or IsEmpty(vCellValueSE) Then
+                    booIsNull = True
+              Else
+                dblWestProp = (CDbl(vCellValueNW) * (1 - dblPropY)) + (CDbl(vCellValueSW) * dblPropY)
+                dblEastProp = (CDbl(vCellValueNE) * (1 - dblPropY)) + (CDbl(vCellValueSE) * dblPropY)
+                varInterpVal = CVar((dblWestProp * dblPropX) + (dblEastProp * (1 - dblPropX)))
+              End If
+            End If
+          Case 2              ' NORTHWEST                =================
+            If iX = 0 Or iY = 0 Then
+              booIsNull = True
+            Else
+              pOrigin.SetCoords iX - 1, iY - 1
+              pRaster.Read pOrigin, pPB
+              vCellValueNW = pPB.GetVal(lngBandIndex, 0, 0)
+              vCellValueSW = pPB.GetVal(lngBandIndex, 0, 1)
+              vCellValueNE = pPB.GetVal(lngBandIndex, 1, 0)
+              vCellValueSE = pPB.GetVal(lngBandIndex, 1, 1)
+              If IsCellNaN(vCellValueNW) Or IsCellNaN(vCellValueNE) Or IsCellNaN(vCellValueSW) Or _
+                IsCellNaN(vCellValueSE) Or IsEmpty(vCellValueNW) Or IsEmpty(vCellValueNE) Or _
+                IsEmpty(vCellValueSW) Or IsEmpty(vCellValueSE) Then
+                    booIsNull = True
+              Else
+                dblWestProp = (CDbl(vCellValueNW) * (1 - dblPropY)) + (CDbl(vCellValueSW) * dblPropY)
+                dblEastProp = (CDbl(vCellValueNE) * (1 - dblPropY)) + (CDbl(vCellValueSE) * dblPropY)
+                varInterpVal = CVar((dblWestProp * (1 - dblPropX)) + (dblEastProp * dblPropX))
+              End If
+            End If
+          Case 3              ' SOUTHWEST                =================
+            If iX = 0 Or iY = lngMaxY Then
+              booIsNull = True
+            Else
+              pOrigin.SetCoords iX - 1, iY
+              pRaster.Read pOrigin, pPB
+              vCellValueNW = pPB.GetVal(lngBandIndex, 0, 0)
+              vCellValueSW = pPB.GetVal(lngBandIndex, 0, 1)
+              vCellValueNE = pPB.GetVal(lngBandIndex, 1, 0)
+              vCellValueSE = pPB.GetVal(lngBandIndex, 1, 1)
+              If IsCellNaN(vCellValueNW) Or IsCellNaN(vCellValueNE) Or IsCellNaN(vCellValueSW) Or _
+                IsCellNaN(vCellValueSE) Or IsEmpty(vCellValueNW) Or IsEmpty(vCellValueNE) Or _
+                IsEmpty(vCellValueSW) Or IsEmpty(vCellValueSE) Then
+                    booIsNull = True
+              Else
+                dblWestProp = (CDbl(vCellValueNW) * dblPropY) + (CDbl(vCellValueSW) * (1 - dblPropY))
+                dblEastProp = (CDbl(vCellValueNE) * dblPropY) + (CDbl(vCellValueSE) * (1 - dblPropY))
+                varInterpVal = CVar((dblWestProp * (1 - dblPropX)) + (dblEastProp * dblPropX))
+              End If
+            End If
+          Case 4              ' SOUTHEAST                =================
+            If iX = lngMaxX Or iY = lngMaxY Then
+              booIsNull = True
+            Else
+              pOrigin.SetCoords iX, iY
+              pRaster.Read pOrigin, pPB
+              vCellValueNW = pPB.GetVal(lngBandIndex, 0, 0)
+              vCellValueSW = pPB.GetVal(lngBandIndex, 0, 1)
+              vCellValueNE = pPB.GetVal(lngBandIndex, 1, 0)
+              vCellValueSE = pPB.GetVal(lngBandIndex, 1, 1)
+              If IsCellNaN(vCellValueNW) Or IsCellNaN(vCellValueNE) Or IsCellNaN(vCellValueSW) Or _
+                IsCellNaN(vCellValueSE) Or IsEmpty(vCellValueNW) Or IsEmpty(vCellValueNE) Or _
+                IsEmpty(vCellValueSW) Or IsEmpty(vCellValueSE) Then
+                    booIsNull = True
+              Else
+                dblWestProp = (CDbl(vCellValueNW) * dblPropY) + (CDbl(vCellValueSW) * (1 - dblPropY))
+                dblEastProp = (CDbl(vCellValueNE) * dblPropY) + (CDbl(vCellValueSE) * (1 - dblPropY))
+                varInterpVal = CVar((dblWestProp * dblPropX) + (dblEastProp * (1 - dblPropX)))
+              End If
+
+            End If
+        End Select
+
+        If booIsNull Then
+          varReturn(lngIndex) = Null
+        Else
+          varReturn(lngIndex) = varInterpVal
+        End If
+
+          "   dblPropX = " & CStr(dblPropX) & vbCrLf & _
+          "   dblPropY = " & CStr(dblPropY) & vbCrLf & _
+          "   Quadrant = " & CStr(bytQuadrant) & vbCrLf & _
+          "   vCellValueNW = " & CStr(vCellValueNW) & vbCrLf & _
+          "   vCellValueNE = " & CStr(vCellValueNE) & vbCrLf & _
+          "   vCellValueSW = " & CStr(vCellValueSW) & vbCrLf & _
+          "   vCellValueSE = " & CStr(vCellValueSE) & vbCrLf & _
+          "   dblWestProp = " & CStr(dblWestProp) & vbCrLf & _
+          "   dblEastProp = " & CStr(dblEastProp) & vbCrLf & _
+          "   Interpolated Value = " & CStr(varInterpVal)
+      End If
+    Next lngIndex
+    CellValues4CellInterp_ByNumbers = varReturn
+
+End Function
+
 Public Function CellValues2(pPoints As IPointCollection, pRaster As IRaster, _
         Optional lngBandIndex As Long = 0) As esriSystem.IVariantArray
 
@@ -1201,209 +1938,6 @@ Public Sub TestDrawRectangles()
   Call DrawRectanglesAroundCellsInView(pEnv, pRLayer, True, True, pMxDoc)
 End Sub
 
-Public Sub DrawRectanglesAroundCellsInView(pGeom As IGeometry, pRasterLayer As IRasterLayer, _
-    booDrawCenterpoints As Boolean, booDrawBoxes As Boolean, pMxDoc As IMxDocument)
-
-  Dim strRasterLayerName As String
-  strRasterLayerName = pRasterLayer.Name
-
-  Dim pEnv As IEnvelope
-  Set pEnv = pGeom.Envelope
-  Dim pOrigin As IPoint
-  Dim dblXMin As Double
-  Dim dblXMax As Double
-  Dim dblYMin As Double
-  Dim dblYMax As Double
-  dblXMin = pEnv.XMin
-  dblXMax = pEnv.XMax
-  dblYMin = pEnv.YMin
-  dblYMax = pEnv.YMax
-
-  Dim dblCellWidth As Double
-  Dim dblCellHeight As Double
-  Dim pPnt As IPnt
-  Dim pRaster As IRaster
-  Dim pRastBand As IRasterBand
-  Dim pRastBandColl As IRasterBandCollection
-  Dim pRastProps As IRasterProps
-
-  Set pRaster = pRasterLayer.Raster
-  Set pRastBandColl = pRaster
-  Set pRastBand = pRastBandColl.Item(0)
-  Set pRastProps = pRastBand
-  Set pPnt = pRastProps.MeanCellSize
-  dblCellWidth = pPnt.x
-  dblCellHeight = pPnt.Y
-
-  Dim dblRastXMin As Double
-  Dim dblRastYMin As Double
-  dblRastXMin = pRastProps.Extent.XMin
-  dblRastYMin = pRastProps.Extent.YMin
-
-  Dim dblShiftX As Double
-  Dim dblShiftY  As Double
-  dblShiftX = MyGeometricOperations.ModDouble(dblXMin - dblRastXMin, dblCellWidth)
-  dblShiftY = MyGeometricOperations.ModDouble(dblYMin - dblRastYMin, dblCellHeight)
-
-  Dim dblXIndex As Double
-  Dim dblYIndex As Double
-  dblXIndex = dblXMin - dblShiftX
-  dblYIndex = dblYMin - dblShiftY
-
-  Dim pPoly As IPolygon
-  Dim pSpRef As ISpatialReference
-  Set pSpRef = pEnv.SpatialReference
-
-  Dim dblValue As Double
-  Dim pValArray As esriSystem.IVariantArray
-  Set pValArray = New esriSystem.varArray
-  Dim pValSubArray As esriSystem.IVariantArray
-  Dim pFieldsArray As esriSystem.IVariantArray
-  Set pFieldsArray = New esriSystem.varArray
-  Dim pField As iField
-  Dim pFieldEdit As IFieldEdit
-  Set pField = New Field
-  Set pFieldEdit = pField
-  With pFieldEdit
-    .Name = "Value"
-    .Type = esriFieldTypeDouble
-  End With
-  pFieldsArray.Add pField
-
-  Dim pPolyArray As esriSystem.IArray
-  Set pPolyArray = New esriSystem.Array
-
-  Dim pClone As IClone
-  Dim pPtValArray As esriSystem.IVariantArray
-  Set pPtValArray = New esriSystem.varArray
-  Dim pPtValSubArray As esriSystem.IVariantArray
-  Dim pPtArray As esriSystem.IArray
-  Set pPtArray = New esriSystem.Array
-  Dim pPtFieldsArray As esriSystem.IVariantArray
-  Set pPtFieldsArray = New esriSystem.varArray
-  Dim varVal As Variant
-
-  Set pClone = pField
-  pPtFieldsArray.Add pClone.Clone
-
-  Dim pTempPoint As IPoint
-
-  Do While dblXIndex < dblXMax
-    Do While dblYIndex < dblYMax
-
-      Dim pPtColl As IPointCollection
-      Set pPoly = New Polygon
-      Set pPoly.SpatialReference = pSpRef
-      Set pPtColl = pPoly
-
-      Set pTempPoint = New Point
-      Set pTempPoint.SpatialReference = pSpRef
-      pTempPoint.PutCoords dblXIndex, dblYIndex
-      pPtColl.AddPoint pTempPoint
-
-      Set pTempPoint = New Point
-      Set pTempPoint.SpatialReference = pSpRef
-      pTempPoint.PutCoords dblXIndex, dblYIndex + dblCellHeight
-      pPtColl.AddPoint pTempPoint
-
-      Set pTempPoint = New Point
-      Set pTempPoint.SpatialReference = pSpRef
-      pTempPoint.PutCoords dblXIndex + dblCellWidth, dblYIndex + dblCellHeight
-      pPtColl.AddPoint pTempPoint
-
-      Set pTempPoint = New Point
-      Set pTempPoint.SpatialReference = pSpRef
-      pTempPoint.PutCoords dblXIndex + dblCellWidth, dblYIndex
-      pPtColl.AddPoint pTempPoint
-
-      pPoly.Close
-      pPolyArray.Add pPoly
-
-      Set pTempPoint = New Point
-      Set pTempPoint.SpatialReference = pSpRef
-      pTempPoint.PutCoords dblXIndex + (dblCellWidth / 2), dblYIndex + (dblCellHeight / 2)
-      pPtArray.Add pTempPoint
-
-      varVal = GridFunctions.CellValue2(pTempPoint, pRaster)
-
-      Set pPtValSubArray = New esriSystem.varArray
-      Set pValSubArray = New esriSystem.varArray
-      If Not IsNull(varVal) Then
-        dblValue = CDbl(varVal)
-        pValSubArray.Add dblValue
-        pPtValSubArray.Add dblValue
-      Else
-        pValSubArray.Add Null
-        pPtValSubArray.Add Null
-      End If
-
-      pValArray.Add pValSubArray
-      pPtValArray.Add pPtValSubArray
-
-      dblYIndex = dblYIndex + dblCellHeight
-
-    Loop
-    dblYIndex = dblYMin - dblShiftY
-    dblXIndex = dblXIndex + dblCellWidth
-  Loop
-
-  Dim pNewFlayer As IFeatureLayer
-  Dim pNewFClass As IFeatureClass
-  If booDrawBoxes Then
-    Set pNewFClass = MyGeneralOperations.CreateInMemoryFeatureClass2(pPolyArray, pValArray, pFieldsArray)
-    Set pNewFlayer = New FeatureLayer
-    Set pNewFlayer.FeatureClass = pNewFClass
-
-    pNewFlayer.Name = strRasterLayerName & "_Cells"
-    pMxDoc.FocusMap.AddLayer pNewFlayer
-  End If
-
-  Dim pNewPtFLayer As IFeatureLayer
-  Dim pNewPtFClass As IFeatureClass
-  If booDrawCenterpoints Then
-    Set pNewPtFClass = MyGeneralOperations.CreateInMemoryFeatureClass2(pPtArray, pPtValArray, pPtFieldsArray)
-    Set pNewPtFLayer = New FeatureLayer
-    Set pNewPtFLayer.FeatureClass = pNewPtFClass
-
-    pNewPtFLayer.Name = strRasterLayerName & "_CenterPoints"
-    pMxDoc.FocusMap.AddLayer pNewPtFLayer
-  End If
-
-  pMxDoc.UpdateContents
-  pMxDoc.ActiveView.Refresh
-
-  GoTo ClearMemory
-ClearMemory:
-  Set pEnv = Nothing
-  Set pOrigin = Nothing
-  Set pPnt = Nothing
-  Set pRaster = Nothing
-  Set pRasterLayer = Nothing
-  Set pRastBand = Nothing
-  Set pRastBandColl = Nothing
-  Set pRastProps = Nothing
-  Set pPoly = Nothing
-  Set pSpRef = Nothing
-  Set pValArray = Nothing
-  Set pValSubArray = Nothing
-  Set pFieldsArray = Nothing
-  Set pField = Nothing
-  Set pFieldEdit = Nothing
-  Set pPolyArray = Nothing
-  Set pClone = Nothing
-  Set pPtValArray = Nothing
-  Set pPtValSubArray = Nothing
-  Set pPtArray = Nothing
-  Set pPtFieldsArray = Nothing
-  Set pTempPoint = Nothing
-  Set pPtColl = Nothing
-  Set pNewFlayer = Nothing
-  Set pNewFClass = Nothing
-  Set pNewPtFLayer = Nothing
-  Set pNewPtFClass = Nothing
-
-End Sub
-
 Public Function CellValue4CellInterp(pPoint As IPoint, pRaster As IRaster, _
     Optional lngBandIndex As Long = 0) As Variant
 
@@ -1632,102 +2166,6 @@ ClearMemory:
 
 End Function
 
-Public Function ReturnPointsDistributedInPolygon(pPolygon As IPolygon, pRaster As IRaster) As IPointCollection
-
-  Dim pSpRef As ISpatialReference
-  Dim pGeoDataset As IGeoDataset
-  Set pGeoDataset = pRaster
-  Set pSpRef = pPolygon.SpatialReference
-  Dim pClone As IClone
-  Dim pTestPolygon As IPolygon
-
-  If Not MyGeneralOperations.CompareSpatialReferences(pSpRef, pGeoDataset.SpatialReference) Then
-    pTestPolygon.Project pGeoDataset.SpatialReference
-    Set pClone = pPolygon
-    Set pTestPolygon = pClone.Clone
-  Else
-    Set pTestPolygon = pPolygon
-  End If
-
-  Dim dblPolyXMin As Double
-  Dim dblPolyYMin As Double
-  Dim dblPolyXMax As Double
-  Dim dblPolyYMax As Double
-  Dim dblCellX As Double
-  Dim dblCellY As Double
-  Dim pPolyEnv As IEnvelope
-  Dim pRastEnv As IEnvelope
-
-  Set pPolyEnv = pTestPolygon.Envelope
-  Set pRastEnv = pGeoDataset.Extent
-
-  dblPolyXMin = pPolyEnv.XMin
-  dblPolyYMin = pPolyEnv.YMin
-  dblPolyXMax = pPolyEnv.XMax
-  dblPolyYMax = pPolyEnv.YMax
-
-  dblCellX = GridFunctions.ReturnPixelWidth(pRaster)
-  dblCellY = GridFunctions.ReturnPixelHeight(pRaster)
-
-  Dim pPtColl As IPointCollection
-  Dim pGeom As IGeometry
-  Dim pTopoOp As ITopologicalOperator
-  Dim pClipPoints As IPointCollection
-  Dim pPoint As IPoint
-
-  Dim lngX As Long
-  Dim lngY As Long
-  Dim dblStartX As Double
-  Dim dblStartY As Double
-  Dim dblEndX As Double
-  Dim dblEndY As Double
-  Dim lngWidthCells As Double
-  Dim lngHeightCells As Long
-
-  Dim dblXCoord As Double
-  Dim dblYCoord As Double
-
-  dblStartX = (dblPolyXMin - MyGeometricOperations.ModDouble(dblPolyXMin - pRastEnv.XMin, dblCellX)) + dblCellX / 2
-  dblStartY = (dblPolyYMin - MyGeometricOperations.ModDouble(dblPolyYMin - pRastEnv.YMin, dblCellY)) + dblCellY / 2
-  dblEndX = (dblPolyXMax - MyGeometricOperations.ModDouble(dblPolyXMax - pRastEnv.XMin, dblCellX)) + dblCellX / 2
-  dblEndY = (dblPolyYMax - MyGeometricOperations.ModDouble(dblPolyYMax - pRastEnv.YMin, dblCellY)) + dblCellY / 2
-  lngWidthCells = Round((dblEndX - dblStartX) / dblCellX)
-  lngHeightCells = Round((dblEndY - dblStartY) / dblCellY)
-
-  Set pPtColl = New Multipoint
-  Set pGeom = pPtColl
-  Set pGeom.SpatialReference = pSpRef
-
-  For lngX = 0 To lngWidthCells
-    For lngY = 0 To lngHeightCells
-      Set pPoint = New Point
-      pPoint.PutCoords dblStartX + (CDbl(lngX) * dblCellX), dblStartY + (CDbl(lngY) * dblCellY)
-      pPtColl.AddPoint pPoint
-    Next lngY
-  Next lngX
-
-  Set pTopoOp = pTestPolygon
-  Set pClipPoints = pTopoOp.Intersect(pPtColl, esriGeometry0Dimension)
-
-  Set ReturnPointsDistributedInPolygon = pClipPoints
-
-  GoTo ClearMemory
-
-ClearMemory:
-  Set pSpRef = Nothing
-  Set pGeoDataset = Nothing
-  Set pClone = Nothing
-  Set pTestPolygon = Nothing
-  Set pPolyEnv = Nothing
-  Set pRastEnv = Nothing
-  Set pPtColl = Nothing
-  Set pGeom = Nothing
-  Set pTopoOp = Nothing
-  Set pClipPoints = Nothing
-  Set pPoint = Nothing
-
-End Function
-
 Public Function ReturnBooleanArrayCellsInPolygon(pPolygon As IPolygon, _
     pRaster As IRaster, lngCellOriginX As Long, lngCellOriginY As Long) As Boolean()
 
@@ -1928,161 +2366,89 @@ ClearMemory:
 
 End Sub
 
-Public Function CellValues4(booShouldReturn() As Boolean, lngCellOriginX As Long, _
-    lngCellOriginY As Long, pRaster As IRaster) As Variant()
+Public Function ConvertVarArrayToArrayOfValues(varValues() As Variant, dblNumbers() As Double) As Boolean
+  On Error GoTo ErrHandler
 
-    Dim varReturn() As Variant
-    ReDim varReturn(UBound(booShouldReturn, 1), UBound(booShouldReturn, 2))
+  ReDim dblNumbers((UBound(varValues, 1) + 1) * (UBound(varValues, 2) + 1) - 1)
+  Dim lngIndex1 As Long
+  Dim lngIndex2 As Long
+  Dim lngCounter As Long
+  lngCounter = -1
+  Dim varVal As Variant
 
-    Dim lngIndexX As Long
-    Dim lngIndexY As Long
+  For lngIndex1 = 0 To UBound(varValues, 1)
+    For lngIndex2 = 0 To UBound(varValues, 2)
+      varVal = varValues(lngIndex1, lngIndex2)
+      If Not IsNull(varVal) Then
+        lngCounter = lngCounter + 1
+        dblNumbers(lngCounter) = CDbl(varVal)
+      End If
+    Next lngIndex2
+  Next lngIndex1
 
-    Dim pRastProps As IRasterProps
-    Set pRastProps = pRaster
-    Dim varNoValue As Variant
-    varNoValue = pRastProps.NoDataValue
+  If lngCounter = -1 Then
+    ConvertVarArrayToArrayOfValues = False
+  Else
+    If lngCounter < UBound(dblNumbers) Then ReDim Preserve dblNumbers(lngCounter)
+    ConvertVarArrayToArrayOfValues = True
+  End If
 
-    Dim pPB As IPixelBlock3
-    Dim lngWidth As Long
-    Dim lngHeight As Long
+  Exit Function
 
-    lngWidth = UBound(booShouldReturn, 1)
-    lngHeight = UBound(booShouldReturn, 2)
-
-    Dim pPnt As IPnt
-    Set pPnt = New Pnt
-    pPnt.SetCoords lngWidth + 1, lngHeight + 1
-
-    Dim pOrigin As IPnt
-    Set pOrigin = New Pnt
-    pOrigin.SetCoords lngCellOriginX, lngCellOriginY
-
-    Set pPB = pRaster.CreatePixelBlock(pPnt)
-    pPB.PixelType(0) = PT_DOUBLE
-    pRaster.Read pOrigin, pPB
-
-    Dim dblCellValue As Double
-    Dim varData As Variant
-    Dim varCellVal As Variant
-
-    varData = pPB.PixelData(0)
-
-    If IsEmpty(pRastProps.NoDataValue) Then
-      For lngIndexY = 0 To lngHeight
-        For lngIndexX = 0 To lngWidth
-          If booShouldReturn(lngIndexX, lngIndexY) Then
-            varCellVal = CVar(varData(lngIndexX, lngIndexY))
-            varReturn(lngIndexX, lngIndexY) = varCellVal
-          Else
-            varReturn(lngIndexX, lngIndexY) = Null
-          End If
-        Next lngIndexX
-      Next lngIndexY
-    Else
-      For lngIndexY = 0 To lngHeight
-        For lngIndexX = 0 To lngWidth
-          If booShouldReturn(lngIndexX, lngIndexY) Then
-            varCellVal = CVar(varData(lngIndexX, lngIndexY))
-            If varCellVal = varNoValue(0) Then
-              varReturn(lngIndexX, lngIndexY) = Null
-            Else
-              varReturn(lngIndexX, lngIndexY) = varCellVal
-            End If
-          Else
-            varReturn(lngIndexX, lngIndexY) = Null
-          End If
-        Next lngIndexX
-      Next lngIndexY
-
-    End If
-
-    CellValues4 = varReturn
-
-  GoTo ClearMemory
-ClearMemory:
-  Erase varReturn
-  Set pRastProps = Nothing
-  varNoValue = Null
-  Set pPB = Nothing
-  Set pPnt = Nothing
-  Set pOrigin = Nothing
-  varData = Null
-  varCellVal = Null
+ErrHandler:
+  ConvertVarArrayToArrayOfValues = False
 
 End Function
 
-Public Function CellValues2_Fast_byArray_VectorAdjust(booArray() As Boolean, pRaster As IRaster, _
+Public Sub FillRasterParams(pRaster As IRaster, dblCellSizeX As Double, dblCellSizeY As Double, _
+        X1 As Double, Y1 As Double, X2 As Double, Y2 As Double, lngMaxX As Long, lngMaxY As Long)
+
+    Dim pRP As IRasterProps
+    Set pRP = pRaster
+    dblCellSizeX = ReturnPixelWidth(pRaster)
+    dblCellSizeY = ReturnPixelHeight(pRaster)
+
+    Dim pExtent As IEnvelope
+    Set pExtent = pRP.Extent
+    pExtent.QueryCoords X1, Y1, X2, Y2
+
+    lngMaxX = pRP.Width - 1
+    lngMaxY = pRP.Height - 1
+
+End Sub
+
+Public Function CellValues2_Fast_byArray(booArray() As Boolean, pRaster As IRaster, _
         dblCellSizeX As Double, dblCellSizeY As Double, X1 As Double, Y1 As Double, _
         X2 As Double, Y2 As Double, pPB As IPixelBlock3, _
         lngMaxX As Long, lngMaxY As Long, pPnt As IPnt, pOrigin As IPnt, lngMaxIndex As Long, _
-        pAOIPolygon As IPolygon, varEnvelopes() As Variant, pFClass As IFeatureClass, _
-        Optional lngBandIndex As Long = 0, Optional pMxDoc As IMxDocument, Optional booPause As Boolean, _
-        Optional booForceFullArea As Boolean, Optional booUseDifferentArea As Boolean, _
-        Optional pTileFClass As IFeatureClass) As Double()
+        Optional lngBandIndex As Long = 0) As Double()
 
-  Dim lngIndex As Long
-  Dim lngIndex2 As Long
-  Dim vCellValue As Variant
+    Dim lngIndex As Long
+    Dim lngIndex2 As Long
+    Dim vCellValue As Variant
 
-  Dim dblFullArea As Double
-  Dim dblClipArea As Double
-  Dim dblPolygonSumArea As Double
-  Dim dblProportion As Double
-  Dim pEnv As IEnvelope
-  Dim pClipPoly As IPolygon
-  Dim varReturn As Variant
+    Dim dblReturn() As Double
+    lngMaxIndex = -1
 
-  Dim dblReturn() As Double
-  lngMaxIndex = -1
+    pRaster.Read pOrigin, pPB
+    Dim varPixels As Variant
+    pPB.PixelType(0) = PT_FLOAT
+    varPixels = pPB.PixelData(0)
 
-  pRaster.Read pOrigin, pPB
-  Dim varPixels As Variant
-  pPB.PixelType(0) = PT_FLOAT
-  varPixels = pPB.PixelData(0)
-
-  For lngIndex = 0 To UBound(booArray, 1)
-    For lngIndex2 = 0 To UBound(booArray, 2)
-      If booArray(lngIndex, lngIndex2) Then
-
-        If lngIndex = 2 And lngIndex2 = 5 Then
-          DoEvents
+    For lngIndex = 0 To UBound(booArray, 1)
+      For lngIndex2 = 0 To UBound(booArray, 2)
+        If booArray(lngIndex, lngIndex2) Then
+          vCellValue = varPixels(lngIndex, lngIndex2)
+          If Not IsNull(vCellValue) Then
+            lngMaxIndex = lngMaxIndex + 1
+            ReDim Preserve dblReturn(lngMaxIndex)
+            dblReturn(lngMaxIndex) = CDbl(vCellValue)
+          End If
         End If
+      Next lngIndex2
+    Next lngIndex
 
-        Set pEnv = varEnvelopes(lngIndex, lngIndex2)
-
-        varReturn = ReturnClipAndProportion(pAOIPolygon, MyGeometricOperations.EnvelopeToPolygon(pEnv), _
-            pFClass, pMxDoc, lngIndex = 8 And lngIndex2 = 22, booForceFullArea, booUseDifferentArea, _
-            pTileFClass)
-        Set pClipPoly = varReturn(0)
-        dblFullArea = varReturn(1)
-        dblPolygonSumArea = varReturn(2)
-        dblClipArea = varReturn(3)
-        dblProportion = varReturn(4)
-
-        vCellValue = varPixels(lngIndex, lngIndex2)
-        If Not IsNull(vCellValue) Then
-          lngMaxIndex = lngMaxIndex + 1
-          ReDim Preserve dblReturn(4, lngMaxIndex)
-          dblReturn(0, lngMaxIndex) = CDbl(vCellValue)
-          dblReturn(1, lngMaxIndex) = dblFullArea
-          dblReturn(2, lngMaxIndex) = dblPolygonSumArea
-          dblReturn(3, lngMaxIndex) = dblClipArea
-          dblReturn(4, lngMaxIndex) = dblProportion
-        End If
-
-      End If
-    Next lngIndex2
-  Next lngIndex
-
-  CellValues2_Fast_byArray_VectorAdjust = dblReturn
-
-ClearMemory:
-  vCellValue = Null
-  Set pEnv = Nothing
-  Set pClipPoly = Nothing
-  varReturn = Null
-  Erase dblReturn
-  varPixels = Null
+    CellValues2_Fast_byArray = dblReturn
 
 End Function
 

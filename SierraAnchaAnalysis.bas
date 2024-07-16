@@ -1,10 +1,12 @@
 Attribute VB_Name = "SierraAnchaAnalysis"
 Option Explicit
+
 Public Sub RunAsBatch()
-  
+Attribute RunAsBatch.VB_ProcData.VB_Invoke_Func = ""
+
   Dim lngTimeStart As Long
   lngTimeStart = GetTickCount
-  
+
   OrganizeData_SA
   ReviseShapefiles_SA
   ReviseShapefiles_SA
@@ -20,17 +22,16 @@ Public Sub RunAsBatch()
   More_Margaret_Functions.SummarizeSpeciesByCorrectQuadrat_SA
   More_Margaret_Functions.SummarizeYearByCorrectQuadratByYear_SA
   SierraAncha_Compare.GenerateRData
-  
-'''   IF EXPORT SUBSETS OF ALL SPECIES
+
   Margaret_Functions_3.ExportSubsetsOfSpeciesShapefiles_SA True, False
-'  Margaret_Functions_3.ExportSubsetsOfSpeciesShapefiles_SA False, True
 
   CreateFinalTables_SA
-  
+
   Debug.Print "============================"
   Debug.Print "Batch Process Complete:"
   Debug.Print MyGeneralOperations.ReturnTimeElapsedFromMilliseconds(GetTickCount - lngTimeStart)
 End Sub
+
 Public Function ReturnSpeciesTypeColl(pCoverFClass As IFeatureClass, pDensityFClass As IFeatureClass, pSpeciesData As Collection, _
       Optional pRefColl_Apr19 As Collection, Optional strFinalFolder As String) As Collection
 
@@ -201,6 +202,9 @@ Public Sub GenerateOverstoryData_SA()
   MyGeneralOperations.CreateNestedFoldersByPath strNewAncillaryFolder
   strExportPath = MyGeneralOperations.MakeUniquedBASEName(strNewAncillaryFolder & "\SA_5x5m_Shrub_Data_and_Quadrat_Locations.csv")
 
+  Dim strLocationInfoPath As String
+  strLocationInfoPath = MyGeneralOperations.MakeUniquedBASEName(strNewAncillaryFolder & "\Quadrat_Location_Info_Table.csv")
+
   Dim pFClass As IFeatureClass
   Dim lngPlotIDIndex As Long
   Dim lngSpeciesIndex As Long
@@ -364,6 +368,14 @@ Public Sub GenerateOverstoryData_SA()
             strSpecies = Trim(CStr(varVal))
             If strSpecies <> "" And strSpecies <> "NO SP." Then
 
+              If strSpecies = "ERICA SP" Then strSpecies = "ERIC SP"
+              If strSpecies = "NOLMAC" Then strSpecies = "NOLMIC"
+              If strSpecies = "AGASPP" Then strSpecies = "AGAV SP"
+              If strSpecies = "OPUNSP" Then strSpecies = "OPUN SP"
+              If strSpecies = "OPUSPP" Then strSpecies = "OPUN SP"
+              If strSpecies = "ARCPUN" Then strSpecies = "ARCT SP"
+              If strSpecies = "AGASPP" Then strSpecies = "AGAV SP"
+
               If strPlot = "15" Then
                 DoEvents
               End If
@@ -433,6 +445,9 @@ Public Sub GenerateOverstoryData_SA()
     Set pRow = pCursor.NextRow
   Loop
 
+  If Not MyGeneralOperations.CheckCollectionForKey(pDates, "1") Then pDates.Add 2018, "1"
+  If Not MyGeneralOperations.CheckCollectionForKey(pDates, "21") Then pDates.Add 2018, "21"
+
   Dim strOutput As String
   Dim lngIndex As Long
   Dim lngIndex2 As Long
@@ -454,14 +469,21 @@ Public Sub GenerateOverstoryData_SA()
   Dim strDrainage As String
   Dim pEnvironmentColl As Collection
   Dim varData() As Variant
+  Dim dblLongitude As Double
+  Dim dblLatitude As Double
+
+  Dim strOutputLocationInfo As String
 
   strOutput = """Site"",""Quadrat"",""Drainage"",""Num_Species"","
   For lngIndex = 1 To lngMaxCount
-    strOutput = strOutput & """Species_" & Format(lngIndex, "0") & """,""S" & Format(lngIndex, "0") & "_Ht_n_min_mean_max"",""" & _
+    strOutput = strOutput & """Species_" & Format(lngIndex, "0") & """,""S" & Format(lngIndex, "0") & "_Ht_n_min_mean_max"",""S" & _
         Format(lngIndex, "0") & "_CanDiam_n_min_mean_max"","
   Next lngIndex
   strOutput = strOutput & """Parent_Material"",""Elevation"",""Aspect"",""Slope_Percent"",""Easting_NAD_1983_UTM_12""," & _
-      """Northing_NAD_1983_UTM_12"",""Year_Measured""" & vbCrLf
+      """Northing_NAD_1983_UTM_12"",""Longitude_NAD_1983"",""Latitude_NAD_1983"",""Year_Measured""" & vbCrLf
+
+  strOutputLocationInfo = """Site"",""Quadrat"",""Drainage"",""Parent_Material"",""Elevation"",""Aspect"",""Slope_Percent"",""Easting_NAD_1983_UTM_12""," & _
+      """Northing_NAD_1983_UTM_12"",""Longitude_NAD_1983"",""Latitude_NAD_1983"",""Year_Measured""" & vbCrLf
 
   For lngIndex = 1 To 24
     DoEvents
@@ -478,6 +500,8 @@ Public Sub GenerateOverstoryData_SA()
     dblSlope = varData(4)
     dblUTME = varData(5)
     dblUTMN = varData(6)
+    dblLongitude = varData(7)
+    dblLatitude = varData(8)
 
     If MyGeneralOperations.CheckCollectionForKey(pDates, strPlot) Then
       lngYear = pDates.Item(strPlot)
@@ -497,6 +521,7 @@ Public Sub GenerateOverstoryData_SA()
       QuickSort.StringsAscending strAllSpecies, 0, UBound(strAllSpecies)
 
       strOutput = strOutput & "Natural Drainages," & strPlot & "," & strDrainage & "," & Format(lngSpeciesCount, "0") & ","
+      strOutputLocationInfo = strOutputLocationInfo & "Natural Drainages," & strPlot & "," & strDrainage & ","
 
       For lngIndex2 = 0 To lngMaxCount - 1
         If UBound(strAllSpecies) >= lngIndex2 Then
@@ -525,12 +550,17 @@ Public Sub GenerateOverstoryData_SA()
       Next lngIndex2
 
       strOutput = strOutput & strParentMaterial & "," & Format(dblElev, "0.00") & "," & Format(dblAspect, "0") & "," & _
-          Format(dblSlope, "0%") & "," & Format(dblUTME, "0") & "," & Format(dblUTMN, "0") & "," & strYear & vbCrLf
+          Format(dblSlope, "0%") & "," & Format(dblUTME, "0") & "," & Format(dblUTMN, "0") & "," & Format(dblLongitude, "0.000000") & _
+          "," & Format(dblLatitude, "0.000000") & "," & strYear & vbCrLf
+      strOutputLocationInfo = strOutputLocationInfo & strParentMaterial & "," & Format(dblElev, "0.00") & "," & Format(dblAspect, "0") & "," & _
+          Format(dblSlope, "0%") & "," & Format(dblUTME, "0") & "," & Format(dblUTMN, "0") & "," & Format(dblLongitude, "0.000000") & _
+          "," & Format(dblLatitude, "0.000000") & "," & strYear & vbCrLf
 
     Else
       Debug.Print "Plot " & strPlot & " has 0 species"
 
       strOutput = strOutput & "Natural Drainages," & strPlot & "," & strDrainage & ",0,"
+      strOutputLocationInfo = strOutputLocationInfo & "Natural Drainages," & strPlot & "," & strDrainage & ","
 
       For lngIndex2 = 0 To lngMaxCount - 1
         strSpecies = ""
@@ -541,13 +571,18 @@ Public Sub GenerateOverstoryData_SA()
       Next lngIndex2
 
       strOutput = strOutput & strParentMaterial & "," & Format(dblElev, "0.00") & "," & Format(dblAspect, "0") & "," & _
-          Format(dblSlope, "0%") & "," & Format(dblUTME, "0") & "," & Format(dblUTMN, "0") & "," & strYear & vbCrLf
+          Format(dblSlope, "0%") & "," & Format(dblUTME, "0") & "," & Format(dblUTMN, "0") & "," & Format(dblLongitude, "0.000000") & _
+          "," & Format(dblLatitude, "0.000000") & "," & strYear & vbCrLf
+      strOutputLocationInfo = strOutputLocationInfo & strParentMaterial & "," & Format(dblElev, "0.00") & "," & Format(dblAspect, "0") & "," & _
+          Format(dblSlope, "0%") & "," & Format(dblUTME, "0") & "," & Format(dblUTMN, "0") & "," & Format(dblLongitude, "0.000000") & _
+          "," & Format(dblLatitude, "0.000000") & "," & strYear & vbCrLf
 
     End If
 
   Next lngIndex
 
   MyGeneralOperations.WriteTextFile strExportPath, strOutput
+  MyGeneralOperations.WriteTextFile strLocationInfoPath, strOutputLocationInfo
 
   Debug.Print "Done..."
 
@@ -625,6 +660,13 @@ Public Function ReturnSAEnvironmentalData() As Collection
   Dim strParentMaterial As String
   Dim strPlot As String
   Dim lngPlotIndex As Long
+  Dim dblLongitude As Double
+  Dim dblLatitude As Double
+  Dim pNAD83 As ISpatialReference
+  Dim pClone As IClone
+  Dim pGeoPoint As IPoint
+
+  Set pNAD83 = MyGeneralOperations.CreateSpatialReferenceNAD83
 
   Set pWSFact = New FileGDBWorkspaceFactory
   Set pWS = pWSFact.OpenFromFile("D:\arcGIS_stuff\consultation\Margaret_Moore\Sierra_Ancha\Reference_Datasets.gdb", 0)
@@ -646,6 +688,12 @@ Public Function ReturnSAEnvironmentalData() As Collection
     Set pPoint = pFeature.ShapeCopy
     dblUTME = pPoint.x
     dblUTMN = pPoint.Y
+    Set pClone = pPoint
+    Set pGeoPoint = pClone.Clone
+    pGeoPoint.Project pNAD83
+    dblLongitude = pGeoPoint.x
+    dblLatitude = pGeoPoint.Y
+
     strDrainage = ReturnIntersectingDrainage(pPoint, pDrainageA, pDrainageB, pDrainageC, pDrainageD)
 
     pPoint.Project pGeoSpRef
@@ -660,7 +708,7 @@ Public Function ReturnSAEnvironmentalData() As Collection
       strParentMaterial = ""
     End If
 
-    varData = Array(strDrainage, strParentMaterial, dblElev, dblAspect, dblSlope, dblUTME, dblUTMN)
+    varData = Array(strDrainage, strParentMaterial, dblElev, dblAspect, dblSlope, dblUTME, dblUTMN, dblLongitude, dblLatitude)
     pReturn.Add varData, strPlot
 
     Set pFeature = pFCursor.NextFeature
@@ -1522,7 +1570,11 @@ Public Sub CreateFinalTables_SA()
 
   Set pNewWSFact = New FileGDBWorkspaceFactory
   Dim pWStoUpdate As IWorkspace
-  Set pWStoUpdate = pNewWSFact.OpenFromFile(strFinalFolder & "\Combined_by_Site.gdb", 0)
+  If aml_func_mod.ExistFileDir(strFinalFolder & "\Combined_by_Site.gdb") Then
+    Set pWStoUpdate = pNewWSFact.OpenFromFile(strFinalFolder & "\Combined_by_Site.gdb", 0)
+  Else
+    Set pWStoUpdate = pNewWSFact.OpenFromFile(strFinalFolder & "\Data\Quadrat_Spatial_Data\Combined_by_Site.gdb", 0)
+  End If
   Dim pEnumDataset As IEnumDataset
   Dim pUpdateDataset As IDataset
   Dim pFClass As IFeatureClass
@@ -1588,6 +1640,8 @@ Public Sub CreateFinalTables_SA()
   Dim pVegComment As Collection
   Set pVegComment = New Collection
   pVegComment.Add "Previously known as Arenaria fendleri; Mat forming perennial forb", "Eremogone fendleri"
+  pVegComment.Add "Previously known as Aristida hamulosa", "Aristida ternipes"
+  pVegComment.Add "Previously known as Bahia dissecta", "Hymenothrix dissecta"
   pVegComment.Add "Previously known as Blepharoneuron tricholepis", "Muhlenbergia tricholepis"
   pVegComment.Add "Previously known as Lotus wrightii", "Acmispon wrightii"
   pVegComment.Add "Previously known as Bahia dissecta", "Amauriopsis dissecta"
@@ -1650,7 +1704,11 @@ Public Sub CreateFinalTables_SA()
 
     Call Margaret_Functions.Metadata_pNewFClass(pMxDoc, pNewTable, strAbstract, strPurpose)
 
-    Set pTestWS = pNewWSFact.OpenFromFile(strFinalFolder & "\Combined_by_Site.gdb", 0)
+    If aml_func_mod.ExistFileDir(strFinalFolder & "\Combined_by_Site.gdb") Then
+      Set pTestWS = pNewWSFact.OpenFromFile(strFinalFolder & "\Combined_by_Site.gdb", 0)
+    Else
+      Set pTestWS = pNewWSFact.OpenFromFile(strFinalFolder & "\Data\Quadrat_Spatial_Data\Combined_by_Site.gdb", 0)
+    End If
     Set pDensityFClass = pTestWS.OpenFeatureClass("Density_All")
     lngDensityYearIndex = pDensityFClass.FindField("Year")
     lngDensityPlotIndex = pDensityFClass.FindField("Quadrat")
@@ -1705,7 +1763,7 @@ Public Sub CreateFinalTables_SA()
         ElseIf InStr(1, strSpecies, "UNKFOR", vbTextCompare) > 0 Then
           strAbbrev = "Unknown forb"
         ElseIf StrComp(Trim(strSplit(1)), "Sp.", vbTextCompare) = 0 Then
-          strAbbrev = UCase(Left(strSplit(0), 3)) & "SPP"
+          strAbbrev = UCase(Left(strSplit(0), 4)) & " SP"
         Else
           strAbbrev = UCase(Left(strSplit(0), 3) & Left(strSplit(1), 3))
         End If
@@ -1750,7 +1808,7 @@ Public Sub CreateFinalTables_SA()
         ElseIf InStr(1, strSpecies, "No Density", vbTextCompare) > 0 Then
           strAbbrev = "No Density Species"
         ElseIf StrComp(Trim(strSplit(1)), "Sp.", vbTextCompare) = 0 Then
-          strAbbrev = UCase(Left(strSplit(0), 3)) & "SPP"
+          strAbbrev = UCase(Left(strSplit(0), 4)) & " SP"
         Else
           strAbbrev = UCase(Left(strSplit(0), 3) & Left(strSplit(1), 3))
         End If
@@ -1762,6 +1820,34 @@ Public Sub CreateFinalTables_SA()
 
       Set pFeature = pFCursor.NextFeature
     Loop
+
+    If Not MyGeneralOperations.CheckCollectionForKey(pDoneSpecies, "Dasylirion wheeleri") Then
+      pDoneSpecies.Add True, "Dasylirion wheeleri"
+      lngSpeciesArrayIndex = lngSpeciesArrayIndex + 1
+      ReDim Preserve strSpeciesData(3, lngSpeciesArrayIndex)
+      strSpeciesData(0, lngSpeciesArrayIndex) = "Dasylirion wheeleri"
+      strSpeciesData(1, lngSpeciesArrayIndex) = "DASWHE"
+      strSpeciesData(2, lngSpeciesArrayIndex) = "Density"
+      strSpeciesData(3, lngSpeciesArrayIndex) = "Observed only in larger 5x5m shrub plots"
+    End If
+    If Not MyGeneralOperations.CheckCollectionForKey(pDoneSpecies, "Pinus monophylla") Then
+      pDoneSpecies.Add True, "Pinus monophylla"
+      lngSpeciesArrayIndex = lngSpeciesArrayIndex + 1
+      ReDim Preserve strSpeciesData(3, lngSpeciesArrayIndex)
+      strSpeciesData(0, lngSpeciesArrayIndex) = "Pinus monophylla"
+      strSpeciesData(1, lngSpeciesArrayIndex) = "PINMON"
+      strSpeciesData(2, lngSpeciesArrayIndex) = "Density"
+      strSpeciesData(3, lngSpeciesArrayIndex) = "Observed only in larger 5x5m shrub plots"
+    End If
+    If Not MyGeneralOperations.CheckCollectionForKey(pDoneSpecies, "Rhamnus crocea") Then
+      pDoneSpecies.Add True, "Rhamnus crocea"
+      lngSpeciesArrayIndex = lngSpeciesArrayIndex + 1
+      ReDim Preserve strSpeciesData(3, lngSpeciesArrayIndex)
+      strSpeciesData(0, lngSpeciesArrayIndex) = "Rhamnus crocea"
+      strSpeciesData(1, lngSpeciesArrayIndex) = "RHACRO"
+      strSpeciesData(2, lngSpeciesArrayIndex) = "Density"
+      strSpeciesData(3, lngSpeciesArrayIndex) = "Observed only in larger 5x5m shrub plots"
+    End If
 
     QuickSort.StringAscending_TwoDimensional strSpeciesData, 0, lngSpeciesArrayIndex, 0, 3
     For lngIndex = 0 To lngSpeciesArrayIndex
@@ -1786,15 +1872,13 @@ Public Sub CreateFinalTables_SA()
         strAbstract, pMxDoc
 
   Else
-    Set pNewTable = pFeatWS.OpenTable("Vegetation_Species")
+    Set pNewTable = pFeatWS.OpenTable("Plant_Species_List")
   End If
   MyGeneralOperations.ExportToCSV pNewTable, strNewAncillaryFolder & "\Plant_Species_List.csv", _
         True, False, False, True, , , True
 
   Dim pNAD83 As ISpatialReference
   Set pNAD83 = MyGeneralOperations.CreateSpatialReferenceNAD83
-
-        strExclosure, strNote, strComment, strComment2, dblElev), strPlot
 
   MyGeneralOperations.ExportToCSV_SpecialCases_SA pCoverFClass, strNewAncillaryFolder & "\Cover_Species_Tabular_Version.csv", _
         True, False, False, True, Array("species", "Site", "Quadrat", "Year"), pApp, True, True, pQuadratColl 'pPlotLocColl
@@ -1804,6 +1888,22 @@ Public Sub CreateFinalTables_SA()
   FileCopy strSetFolder & "\Summarize_Quadrats_by_Year.csv", strNewAncillaryFolder & "\Summarize_Quadrats_by_Year.csv"
   FileCopy strSetFolder & "\Summarize_by_Site.csv", strNewAncillaryFolder & "\Summarize_by_Site.csv"
   FileCopy strSetFolder & "\Summarize_by_Quadrat.csv", strNewAncillaryFolder & "\Summarize_by_Quadrat.csv"
+
+  Dim booWorked As Boolean
+  booWorked = MyGeneralOperations.CopyCSVTableToGDB(strNewAncillaryFolder & "\Cover_Species_Tabular_Version.csv", pFeatWS)
+  Debug.Print "Copy 'Cover_Species_Tabular_Version' Worked = " & CStr(booWorked)
+  booWorked = MyGeneralOperations.CopyCSVTableToGDB(strNewAncillaryFolder & "\Density_Species_Tabular_Version.csv", pFeatWS)
+  Debug.Print "Copy 'Density_Species_Tabular_Version' Worked = " & CStr(booWorked)
+  booWorked = ExportCSV_ForceFirstRow(strNewAncillaryFolder & "\Summarize_Quadrats_by_Year.csv", pFeatWS)
+  Debug.Print "Copy 'Summarize_Quadrats_by_Year' Worked = " & CStr(booWorked)
+  booWorked = MyGeneralOperations.CopyCSVTableToGDB(strNewAncillaryFolder & "\Summarize_by_Site.csv", pFeatWS)
+  Debug.Print "Copy 'Summarize_by_Site' Worked = " & CStr(booWorked)
+  booWorked = MyGeneralOperations.CopyCSVTableToGDB(strNewAncillaryFolder & "\Summarize_by_Quadrat.csv", pFeatWS)
+  Debug.Print "Copy 'Summarize_by_Quadrat' Worked = " & CStr(booWorked)
+  booWorked = MyGeneralOperations.CopyCSVTableToGDB(strNewAncillaryFolder & "\SA_5x5m_Shrub_Data_and_Quadrat_Locations.csv", pFeatWS)
+  Debug.Print "Copy 'SA_5x5m_Shrub_Data_and_Quadrat_Locations' Worked = " & CStr(booWorked)
+  booWorked = MyGeneralOperations.CopyCSVTableToGDB(strNewAncillaryFolder & "\Quadrat_Location_Info_Table.csv", pFeatWS)
+  Debug.Print "Copy 'Quadrat_Location_Info_Table' Worked = " & CStr(booWorked)
 
   Debug.Print "Done..."
 
@@ -1852,6 +1952,51 @@ ClearMemory:
   Set pFBuffer = Nothing
 
 End Sub
+
+Public Function ExportCSV_ForceFirstRow(strFilename As String, pDestWS As IFeatureWorkspace) As Boolean
+  Dim strNewName As String
+  Dim strText As String
+  Dim strLines() As String
+  Dim strLine As String
+  Dim strLineSplit() As String
+
+  strText = MyGeneralOperations.ReadTextFile(strFilename)
+  strLines = Split(strText, vbCrLf)
+  strLine = strLines(0)
+  strLineSplit = Split(strLine, ",")
+  Dim lngIndex As Long
+  Dim strWord As String
+  Dim strNewLine As String
+  Dim booInQuotes As Boolean
+
+  For lngIndex = 0 To UBound(strLineSplit)
+    strWord = strLineSplit(lngIndex)
+    booInQuotes = Left(strWord, 1) = """" And Right(strWord, 1) = """"
+    strWord = Replace(strWord, """", "")
+    strWord = MyGeneralOperations.ReturnAcceptableFieldName2(strWord, Nothing, False, False, False, True)
+    Do Until InStr(1, strWord, "__", vbTextCompare) = 0
+      strWord = Replace(strWord, "__", "_")
+    Loop
+    If Right(strWord, 1) = "_" Then strWord = Left(strWord, Len(strWord) - 1)
+    If Left(strWord, 1) = "_" Then strWord = Right(strWord, Len(strWord) - 1)
+    If booInQuotes Then strWord = """" & strWord & """"
+    strNewLine = strNewLine & strWord & IIf(lngIndex = UBound(strLineSplit), "", ",")
+  Next lngIndex
+
+  Dim strNewCSV As String
+  strNewCSV = strNewLine & vbCrLf
+  For lngIndex = 1 To UBound(strLines)
+    strNewCSV = strNewCSV & strLines(lngIndex) & IIf(lngIndex = UBound(strLines), "", vbCrLf)
+  Next lngIndex
+
+  Dim strTempPath As String
+  strTempPath = aml_func_mod.ReturnDir3(strFilename, True) & "temp.csv"
+  MyGeneralOperations.WriteTextFile strTempPath, strNewCSV, True, False
+
+  ExportCSV_ForceFirstRow = MyGeneralOperations.CopyCSVTableToGDB(strTempPath, pDestWS, "Summarize_Quadrats_by_Year")
+  Kill strTempPath
+
+End Function
 
 Public Sub ProduceTabularAreaPerSpeciesTable(pCoverFClass As IFeatureClass, lngCoverYearIndex As Long, _
     lngCoverPlotIndex As Long, lngCoverSiteIndex As Long, lngCoverSpeciesIndex As Long, pApp As IApplication, _
@@ -2128,7 +2273,7 @@ Public Sub DeclareWorkspaces(strOrigShapefiles As String, Optional strModifiedRo
   booUseCurrentDate = False
 
   Dim strSpecifiedDate As String
-  strSpecifiedDate = "2024_01_29"
+  strSpecifiedDate = "2024_07_15"
 
   Dim strDate As String
   Dim strDateSplit() As String

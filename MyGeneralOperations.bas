@@ -3423,6 +3423,608 @@ Public Function CreateNewField(strFieldName As String, lngType As esriFieldType,
 
 End Function
 
+Public Function CopyGDBFeatureClass(pSrcFClass As IFeatureClass, pDestWS As IWorkspace, Optional strName As String = "") As Boolean
+
+  Dim strNewName As String
+  Dim pDataset As IDataset
+  Set pDataset = pSrcFClass
+  Dim pWS2 As IWorkspace2
+  Set pWS2 = pDestWS
+
+  If strNewName = "" Then strNewName = pDataset.BrowseName
+
+  If pWS2.NameExists(esriDTFeatureClass, strNewName) Then
+    MsgBox "'" & strNewName & "' already exists in geodatabase!" & vbCrLf & vbCrLf & pDestWS.PathName & vbCrLf & vbCrLf & _
+      "Dataset not copied..."
+    CopyGDBFeatureClass = False
+    Exit Function
+  End If
+
+  Dim pGeomArray As esriSystem.IArray
+  Set pGeomArray = New esriSystem.Array
+  Dim pFields As esriSystem.IVariantArray
+  Set pFields = New esriSystem.varArray
+  Dim pFinalValsArray As esriSystem.IVariantArray
+  Set pFinalValsArray = New esriSystem.varArray
+  Dim pSubArray As esriSystem.IVariantArray
+
+  Dim pFCursor As IFeatureCursor
+  Dim pFeature As IFeature
+
+  Dim pSrcFields As IFields
+  Dim pField As iField
+  Dim lngIndex As Long
+  Dim pClone As IClone
+
+  Set pSrcFields = pSrcFClass.Fields
+  Dim lngIndexes() As Long
+  Dim lngIndexCounter As Long
+  lngIndexCounter = -1
+
+  For lngIndex = 0 To pSrcFields.FieldCount - 1
+    Set pField = pSrcFields.Field(lngIndex)
+    If Not pField.Type = esriFieldTypeOID And Not pField.Type = esriFieldTypeGeometry And _
+        StrComp(pField.Name, "Shape_Length", vbTextCompare) <> 0 And _
+        StrComp(pField.Name, "Shape_Area", vbTextCompare) <> 0 Then
+
+      Set pClone = pField
+      pFields.Add pClone.Clone
+      lngIndexCounter = lngIndexCounter + 1
+      ReDim Preserve lngIndexes(lngIndexCounter)
+      lngIndexes(lngIndexCounter) = lngIndex
+    End If
+  Next lngIndex
+
+  Set pFCursor = pSrcFClass.Search(Nothing, False)
+  Set pFeature = pFCursor.NextFeature
+  Do Until pFeature Is Nothing
+    pGeomArray.Add pFeature.ShapeCopy
+    Set pSubArray = New esriSystem.varArray
+    For lngIndex = 0 To UBound(lngIndexes)
+      pSubArray.Add pFeature.Value(lngIndexes(lngIndex))
+    Next lngIndex
+    pFinalValsArray.Add pSubArray
+
+    Set pFeature = pFCursor.NextFeature
+  Loop
+
+  Dim pNewFClass As IFeatureClass
+  Set pNewFClass = MyGeneralOperations.CreateGDBFeatureClass_FromArrays(pDestWS, strNewName, pFields, pFinalValsArray, pGeomArray, , , , ENUM_FileGDB)
+
+  CopyGDBFeatureClass = pWS2.NameExists(esriDTFeatureClass, strNewName)
+
+End Function
+
+Public Function CopyCSVTableToGDB(strFilename As String, pDestWS As IWorkspace, Optional strName As String = "") As Boolean
+
+  Dim strNewName As String
+  Dim pWS2 As IWorkspace2
+  Set pWS2 = pDestWS
+
+  If strName = "" Then
+    strNewName = aml_func_mod.ClipExtension2(aml_func_mod.ReturnFilename2(strFilename))
+  Else
+    strNewName = strName
+  End If
+  If InStr(1, "01234567890_", Left(strNewName, 1), vbTextCompare) > 0 Then
+    strNewName = "z_" & strNewName
+  End If
+
+  Dim pWSFact As IWorkspaceFactory
+  Set pWSFact = New TextFileWorkspaceFactory
+  Dim pWS As IFeatureWorkspace
+  Set pWS = pWSFact.OpenFromFile(aml_func_mod.ReturnDir3(strFilename, False), 0)
+
+  Dim pSrcTable As ITable
+  Set pSrcTable = pWS.OpenTable(aml_func_mod.ReturnFilename2(strFilename))
+
+  CopyCSVTableToGDB = CopyGDBTable(pSrcTable, pDestWS, strNewName)
+
+End Function
+
+Public Function CopyGDBTable(pSrcTable As ITable, pDestWS As IWorkspace, Optional strName As String = "") As Boolean
+
+  Dim strNewName As String
+  Dim pDataset As IDataset
+  Set pDataset = pSrcTable
+  Dim pWS2 As IWorkspace2
+  Set pWS2 = pDestWS
+
+  If strName = "" Then
+    strNewName = pDataset.BrowseName
+  Else
+    strNewName = strName
+  End If
+
+  If pWS2.NameExists(esriDTTable, strNewName) Then
+    MsgBox "'" & strNewName & "' already exists in geodatabase!" & vbCrLf & vbCrLf & pDestWS.PathName & vbCrLf & vbCrLf & _
+      "Dataset not copied..."
+    CopyGDBTable = False
+    Exit Function
+  End If
+
+  Dim pFields As esriSystem.IVariantArray
+  Set pFields = New esriSystem.varArray
+  Dim pFinalValsArray As esriSystem.IVariantArray
+  Set pFinalValsArray = New esriSystem.varArray
+  Dim pSubArray As esriSystem.IVariantArray
+
+  Dim pCursor As ICursor
+  Dim pRow As IRow
+
+  Dim pSrcFields As IFields
+  Dim pField As iField
+  Dim lngIndex As Long
+  Dim pClone As IClone
+
+  Set pSrcFields = pSrcTable.Fields
+  Dim lngIndexes() As Long
+  Dim lngIndexCounter As Long
+  lngIndexCounter = -1
+
+  For lngIndex = 0 To pSrcFields.FieldCount - 1
+    Set pField = pSrcFields.Field(lngIndex)
+    If Not pField.Type = esriFieldTypeOID And Not pField.Type = esriFieldTypeGeometry And _
+        StrComp(pField.Name, "Shape_Length", vbTextCompare) <> 0 And _
+        StrComp(pField.Name, "Shape_Area", vbTextCompare) <> 0 Then
+
+      Set pClone = pField
+      pFields.Add pClone.Clone
+      lngIndexCounter = lngIndexCounter + 1
+      ReDim Preserve lngIndexes(lngIndexCounter)
+      lngIndexes(lngIndexCounter) = lngIndex
+    End If
+  Next lngIndex
+
+  Set pCursor = pSrcTable.Search(Nothing, False)
+  Set pRow = pCursor.NextRow
+  Do Until pRow Is Nothing
+    Set pSubArray = New esriSystem.varArray
+    For lngIndex = 0 To UBound(lngIndexes)
+      pSubArray.Add pRow.Value(lngIndexes(lngIndex))
+    Next lngIndex
+    pFinalValsArray.Add pSubArray
+
+    Set pRow = pCursor.NextRow
+  Loop
+
+  Dim pNewTable As ITable
+  Set pNewTable = MyGeneralOperations.CreateGDBTable_FromArrays(pDestWS, strNewName, pFields, pFinalValsArray, , , , ENUM_FileGDB)
+
+  CopyGDBTable = pWS2.NameExists(esriDTTable, strNewName)
+
+End Function
+
+Public Function CreateGDBTable_FromArrays(featWorkspace As IFeatureWorkspace, _
+                                            strName As String, _
+                                            pAddFields As esriSystem.IVariantArray, _
+                                            pValsArray As esriSystem.IVariantArray, _
+                                            Optional pCLSID As UID, _
+                                            Optional pCLSEXT As UID, _
+                                            Optional ConfigWord As String = "", _
+                                            Optional lngCategory As JenDatasetTypes) As ITable
+
+  Set CreateGDBTable_FromArrays = Nothing
+  If featWorkspace Is Nothing Then Exit Function
+  If Name = "" Then Exit Function
+
+  Dim lngOriginalRecCount As Long
+  Dim lngIndex As Long
+
+  If (pCLSID Is Nothing) Or IsMissing(pCLSID) Then
+    Set pCLSID = Nothing
+    Set pCLSID = New UID
+
+    pCLSID.Value = "esriGeoDatabase.Object"
+
+  End If
+
+  Dim pFields As IFields
+  Dim pFieldsEdit As IFieldsEdit
+  Dim pField As iField
+  Dim pFieldEdit As IFieldEdit
+
+  Set pFields = New Fields
+  Set pFieldsEdit = pFields
+
+  Set pField = New Field
+  Set pFieldEdit = pField
+
+  Dim strUniqueName As String
+  Dim strUniqueBase As String
+  strUniqueName = "Object_ID"
+  strUniqueBase = strUniqueName
+  Dim lngUniqueCounter As Long
+  lngUniqueCounter = 1
+  Dim lngCounterLength As Long
+  Dim lngUniqueIndex As Long
+  Dim booNameExists As Boolean
+  Dim pCheckField As iField
+  booNameExists = True
+  If (pAddFields Is Nothing Or IsMissing(pAddFields)) Then
+    booNameExists = False
+  Else
+    Do Until booNameExists = False
+      booNameExists = False
+      For lngUniqueIndex = 0 To pAddFields.Count - 1
+        Set pCheckField = pAddFields.Element(lngUniqueIndex)
+        If pCheckField.Name = strUniqueName Then
+          booNameExists = True
+          Exit For
+        End If
+      Next lngUniqueIndex
+      If booNameExists Then
+        lngUniqueCounter = lngUniqueCounter + 1
+        lngCounterLength = Len(CStr(lngUniqueCounter))
+        strUniqueName = Left(strUniqueBase, 11 - lngCounterLength) & CStr(lngUniqueCounter)
+      End If
+    Loop
+  End If
+
+  Set pField = New Field
+  Set pFieldEdit = pField
+  pFieldEdit.Name = strUniqueName
+  pFieldEdit.AliasName = "object identifier"
+  pFieldEdit.Type = esriFieldTypeOID
+  pFieldsEdit.AddField pField
+
+  Dim pAddField As iField
+  Dim pSrcField As iField
+  Dim pAddFieldEdit As IFieldEdit
+  Dim pClone As IClone
+  Dim strNewName As String
+
+  Dim pNameConverter As New Collection
+
+  If Not (pAddFields Is Nothing Or IsMissing(pAddFields)) Then
+    For lngIndex = 0 To pAddFields.Count - 1
+      Set pSrcField = pAddFields.Element(lngIndex)
+      Set pClone = pSrcField
+      Set pAddField = pClone.Clone
+      Set pAddFieldEdit = pAddField
+      strNewName = pAddField.Name
+
+      strNewName = MyGeneralOperations.ReturnAcceptableFieldName2(strNewName, Nothing, False, False, False, True)
+      If strNewName <> pAddField.Name Then
+        DoEvents
+      End If
+      Do Until InStr(1, strNewName, "__", vbTextCompare) = 0
+        strNewName = Replace(strNewName, "__", "_")
+      Loop
+      If Right(strNewName, 1) = "_" Then strNewName = Left(strNewName, Len(strNewName) - 1)
+      If Left(strNewName, 1) = "_" Then strNewName = Right(strNewName, Len(strNewName) - 1)
+      With pAddFieldEdit
+        .Name = MyGeneralOperations.ReturnAcceptableFieldName2(strNewName, Nothing, False, False, False, True)
+      End With
+
+      pFieldsEdit.AddField pAddField
+      pNameConverter.Add pAddField.Name, pSrcField.Name
+    Next lngIndex
+  End If
+
+  If (pCLSEXT Is Nothing) Or IsMissing(pCLSEXT) Then
+    Set pCLSEXT = Nothing
+  End If
+
+  Dim pTable As ITable
+  Set pTable = featWorkspace.CreateTable(strName, pFields, pCLSID, _
+                             pCLSEXT, ConfigWord)
+
+  Dim pInsertCursor As ICursor
+  Dim pInsertBuffer As IRowBuffer
+  Dim pSubArray As esriSystem.IVariantArray
+  Dim lngIndex2 As Long
+
+  Dim lngFieldIndexes() As Long
+  ReDim lngFieldIndexes(pAddFields.Count - 1)
+
+  For lngIndex = 0 To pAddFields.Count - 1
+    Set pField = pAddFields.Element(lngIndex)
+    lngFieldIndexes(lngIndex) = pTable.FindField(pNameConverter.Item(pField.Name))
+  Next lngIndex
+
+  Set pInsertCursor = pTable.Insert(True)
+  Set pInsertBuffer = pTable.CreateRowBuffer
+
+  For lngIndex = 0 To pValsArray.Count - 1
+    Set pSubArray = pValsArray.Element(lngIndex)
+    For lngIndex2 = 0 To UBound(lngFieldIndexes)
+      If pInsertBuffer.Fields.Field(lngFieldIndexes(lngIndex2)).Editable Then
+        pInsertBuffer.Value(lngFieldIndexes(lngIndex2)) = pSubArray.Element(lngIndex2)
+      End If
+    Next lngIndex2
+    pInsertCursor.InsertRow pInsertBuffer
+
+    If lngIndex Mod 100 = 0 Then
+      pInsertCursor.Flush
+      DoEvents
+    End If
+  Next lngIndex
+
+  pInsertCursor.Flush
+  Set CreateGDBTable_FromArrays = pTable
+
+  GoTo ClearMemory
+
+ClearMemory:
+
+  Set pFields = Nothing
+  Set pFieldsEdit = Nothing
+  Set pField = Nothing
+  Set pFieldEdit = Nothing
+  Set pCheckField = Nothing
+  Set pTable = Nothing
+  Set pInsertCursor = Nothing
+  Set pInsertBuffer = Nothing
+  Set pSubArray = Nothing
+  Erase lngFieldIndexes
+
+End Function
+
+Public Function CreateGDBFeatureClass_FromArrays(featWorkspace As IFeatureWorkspace, _
+                                            Name As String, _
+                                            pAddFields As esriSystem.IVariantArray, _
+                                            pValsArray As esriSystem.IVariantArray, _
+                                            pGeometries As esriSystem.IArray, _
+                                            Optional pCLSID As UID, _
+                                            Optional pCLSEXT As UID, _
+                                            Optional ConfigWord As String = "", _
+                                            Optional lngCategory As JenDatasetTypes) As IFeatureClass
+
+  Set CreateGDBFeatureClass_FromArrays = Nothing
+  If featWorkspace Is Nothing Then Exit Function
+  If Name = "" Then Exit Function
+  Dim featType As esriFeatureType
+  featType = esriFTSimple
+  Dim pSpRef As ISpatialReference
+
+  If pGeometries.Count = 0 Then
+    Set CreateGDBFeatureClass_FromArrays = Nothing
+    MsgBox "Unable to create feature class; no geometries in array..."
+    GoTo ClearMemory
+  End If
+
+  Dim geomType As esriGeometryType
+  Dim pGeom As IGeometry
+  Dim lngOriginalRecCount As Long
+  Dim pExtent As IEnvelope
+  Dim pEnv As IEnvelope
+  Dim lngIndex As Long
+  Dim booHasZ As Boolean
+  Dim booHasM As Boolean
+  Dim pZAware As IZAware
+  Dim pMAware As IMAware
+
+  Set pGeom = pGeometries.Element(0)
+  geomType = pGeom.GeometryType
+  Set pSpRef = pGeom.SpatialReference
+
+  Set pZAware = pGeom
+  Set pMAware = pGeom
+  booHasZ = pZAware.ZAware
+  booHasM = pMAware.MAware
+
+  Set pEnv = pGeom.Envelope
+  Set pExtent = pEnv
+
+  lngOriginalRecCount = pGeometries.Count
+  If lngOriginalRecCount > 1 Then
+    For lngIndex = 0 To pGeometries.Count - 1
+      Set pGeom = pGeometries.Element(lngIndex)
+      Set pEnv = pGeom.Envelope
+      If Not pEnv.IsEmpty Then
+        If pExtent.IsEmpty Then
+          Set pExtent = pEnv
+        Else
+          pExtent.Union pEnv
+        End If
+      End If
+    Next lngIndex
+  End If
+
+  If (pCLSID Is Nothing) Or IsMissing(pCLSID) Then
+    Set pCLSID = Nothing
+    Set pCLSID = New UID
+
+    Select Case featType
+      Case esriFTSimple
+        pCLSID.Value = "esriGeoDatabase.Feature"
+        If geomType = esriGeometryLine Then geomType = esriGeometryPolyline
+    End Select
+  End If
+
+  Dim pFields As IFields
+  Dim pFieldsEdit As IFieldsEdit
+  Dim pGeomDef As IGeometryDef
+  Dim pGeomDefEdit As IGeometryDefEdit
+  Dim pField As iField
+  Dim pFieldEdit As IFieldEdit
+
+  Set pFields = New Fields
+  Set pFieldsEdit = pFields
+
+  Set pGeomDef = New GeometryDef
+  Set pGeomDefEdit = pGeomDef
+
+  Dim dblIndex0 As Double
+  Dim dblIndex1 As Double
+  Dim dblIndex2 As Double
+  dblIndex0 = 100
+  dblIndex1 = 0
+  dblIndex2 = 0
+
+  If Not pExtent Is Nothing And lngOriginalRecCount > 0 Then
+    If Not pExtent.IsEmpty Then
+      Dim dblOptimalGridCells As Double
+      dblOptimalGridCells = lngOriginalRecCount / 200
+      Dim dblX As Double
+      Dim dblY As Double
+      dblX = pExtent.Width
+      dblY = pExtent.Height
+      dblIndex0 = Sqr(dblX * dblY / dblOptimalGridCells)
+      If dblIndex0 > dblX Then
+        dblIndex0 = dblX
+      End If
+      If dblIndex0 > dblY Then
+        dblIndex0 = dblY
+      End If
+
+      dblIndex1 = 0
+      dblIndex2 = 0
+    End If
+  End If
+
+  If Not CheckSpRefDomain(pSpRef) Then
+    Dim pSpRefRes As ISpatialReferenceResolution
+    Set pSpRefRes = pSpRef
+    pSpRefRes.ConstructFromHorizon
+  End If
+
+  With pGeomDefEdit
+    .GeometryType = geomType
+    If lngCategory = ENUM_FileGDB Then       ' FILE GDB
+      .GridCount = 1
+      .GridSize(0) = dblIndex0
+    Else
+      .GridCount = 1
+      .GridSize(0) = dblIndex0
+    End If
+    .HasM = booHasM
+    .HasZ = booHasZ
+    Set .SpatialReference = pSpRef
+  End With
+
+  Set pField = New Field
+  Set pFieldEdit = pField
+
+  pFieldEdit.Name = "Shape"
+  pFieldEdit.AliasName = "geometry"
+  pFieldEdit.Type = esriFieldTypeGeometry
+  Set pFieldEdit.GeometryDef = pGeomDef
+  pFieldsEdit.AddField pField
+
+  Dim strUniqueName As String
+  Dim strUniqueBase As String
+  strUniqueName = "Object_ID"
+  strUniqueBase = strUniqueName
+  Dim lngUniqueCounter As Long
+  lngUniqueCounter = 1
+  Dim lngCounterLength As Long
+  Dim lngUniqueIndex As Long
+  Dim booNameExists As Boolean
+  Dim pCheckField As iField
+  booNameExists = True
+  If (pAddFields Is Nothing Or IsMissing(pAddFields)) Then
+    booNameExists = False
+  Else
+    Do Until booNameExists = False
+      booNameExists = False
+      For lngUniqueIndex = 0 To pAddFields.Count - 1
+        Set pCheckField = pAddFields.Element(lngUniqueIndex)
+        If pCheckField.Name = strUniqueName Then
+          booNameExists = True
+          Exit For
+        End If
+      Next lngUniqueIndex
+      If booNameExists Then
+        lngUniqueCounter = lngUniqueCounter + 1
+        lngCounterLength = Len(CStr(lngUniqueCounter))
+        strUniqueName = Left(strUniqueBase, 11 - lngCounterLength) & CStr(lngUniqueCounter)
+      End If
+    Loop
+  End If
+
+  Set pField = New Field
+  Set pFieldEdit = pField
+  pFieldEdit.Name = strUniqueName
+  pFieldEdit.AliasName = "object identifier"
+  pFieldEdit.Type = esriFieldTypeOID
+  pFieldsEdit.AddField pField
+
+  If Not (pAddFields Is Nothing Or IsMissing(pAddFields)) Then
+    For lngIndex = 0 To pAddFields.Count - 1
+      pFieldsEdit.AddField pAddFields.Element(lngIndex)
+    Next lngIndex
+  End If
+
+  If (pCLSEXT Is Nothing) Or IsMissing(pCLSEXT) Then
+    Set pCLSEXT = Nothing
+  End If
+
+  Dim strShapeFld As String
+  Dim j As Integer
+  For j = 0 To pFields.FieldCount - 1
+    If pFields.Field(j).Type = esriFieldTypeGeometry Then
+      strShapeFld = pFields.Field(j).Name
+    End If
+  Next
+
+  Dim pFClass As IFeatureClass
+  Set pFClass = featWorkspace.CreateFeatureClass(Name, pFields, pCLSID, _
+                             pCLSEXT, featType, strShapeFld, ConfigWord)
+
+  Dim pInsertCursor As IFeatureCursor
+  Dim pInsertBuffer As IFeatureBuffer
+  Dim pSubArray As esriSystem.IVariantArray
+  Dim lngIndex2 As Long
+
+  Dim lngFieldIndexes() As Long
+  ReDim lngFieldIndexes(pAddFields.Count - 1)
+
+  For lngIndex = 0 To pAddFields.Count - 1
+    Set pField = pAddFields.Element(lngIndex)
+    lngFieldIndexes(lngIndex) = pFClass.FindField(pField.Name)
+  Next lngIndex
+
+  Set pInsertCursor = pFClass.Insert(True)
+  Set pInsertBuffer = pFClass.CreateFeatureBuffer
+
+  For lngIndex = 0 To pValsArray.Count - 1
+    Set pGeom = pGeometries.Element(lngIndex)
+    Set pSubArray = pValsArray.Element(lngIndex)
+
+    Set pInsertBuffer.Shape = pGeom
+    For lngIndex2 = 0 To UBound(lngFieldIndexes)
+      If pInsertBuffer.Fields.Field(lngFieldIndexes(lngIndex2)).Editable Then
+        pInsertBuffer.Value(lngFieldIndexes(lngIndex2)) = pSubArray.Element(lngIndex2)
+      End If
+    Next lngIndex2
+    pInsertCursor.InsertFeature pInsertBuffer
+
+    If lngIndex Mod 100 = 0 Then
+      pInsertCursor.Flush
+      DoEvents
+    End If
+  Next lngIndex
+
+  pInsertCursor.Flush
+  Set CreateGDBFeatureClass_FromArrays = pFClass
+
+  GoTo ClearMemory
+
+ClearMemory:
+  Set pSpRef = Nothing
+  Set pGeom = Nothing
+  Set pExtent = Nothing
+  Set pEnv = Nothing
+  Set pZAware = Nothing
+  Set pMAware = Nothing
+  Set pFields = Nothing
+  Set pFieldsEdit = Nothing
+  Set pGeomDef = Nothing
+  Set pGeomDefEdit = Nothing
+  Set pField = Nothing
+  Set pFieldEdit = Nothing
+  Set pSpRefRes = Nothing
+  Set pCheckField = Nothing
+  Set pFClass = Nothing
+  Set pInsertCursor = Nothing
+  Set pInsertBuffer = Nothing
+  Set pSubArray = Nothing
+  Erase lngFieldIndexes
+
+End Function
+
 Public Sub AddValueToStringArray(strValue As String, strArray() As String, booOnlyIfNewValue As Boolean)
 
   Dim booValExists As Boolean

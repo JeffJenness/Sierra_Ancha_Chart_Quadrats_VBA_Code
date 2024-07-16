@@ -16,6 +16,180 @@ Public Sub ExportMaps()
 
 End Sub
 
+Public Sub ConvertLayoutGraphics()
+
+  Dim lngTransparency As Long
+  Dim dblOutlineWidth As Double
+  lngTransparency = 30
+  dblOutlineWidth = 2
+
+  Dim pMxDoc As IMxDocument
+  Set pMxDoc = ThisDocument
+
+  Dim pGeom As IGeometry
+  Dim pArray As esriSystem.IArray
+  Dim lngIndex As Long
+  Dim pPolygon As IPolygon
+
+  Dim pActiveView As IActiveView
+  Dim pDisplay As IScreenDisplay
+  Dim pDisplayTransform As IDisplayTransformation
+
+  Dim pPoint As IPoint
+  Dim pPtColl As IPointCollection
+  Dim pNewPtColl As IPointCollection
+  Dim pNewPolygon As IPolygon
+  Dim lngX As Long
+  Dim lngY As Long
+  Dim lngIndex2 As Long
+  Dim pNewPoint As IPoint
+  Dim pSpRef As ISpatialReference
+  Dim pMapView As IActiveView
+  Set pMapView = pMxDoc.FocusMap
+  Set pSpRef = pMxDoc.FocusMap.SpatialReference
+
+  Dim pNewFClass As IFeatureClass
+  Dim pWS As IWorkspace
+  Dim pWSFact As IWorkspaceFactory
+  Set pWSFact = New FileGDBWorkspaceFactory
+  Set pWS = pWSFact.OpenFromFile("D:\arcGIS_stuff\consultation\Springs_Stewardship_Institute\Range_Maps\Map_Boxes.gdb", 0)
+  Dim strName As String
+  Dim pWS2 As IWorkspace2
+  Set pWS2 = pWS
+  Dim pEnv As IEnvelope
+  Set pEnv = New Envelope
+  Set pEnv.SpatialReference = pSpRef
+  Dim pNewPolys As esriSystem.IArray
+  Dim pNewBuff As IFeatureBuffer
+  Dim pNewCursor As IFeatureCursor
+  Dim lngIDIndex As Long
+  Dim pNewFlayer As IFeatureLayer
+  Dim pDataset As IDataset
+  Dim pRender As ISimpleRenderer
+  Dim pFillSymbol As ISimpleFillSymbol
+  Dim pLineSymbol As ISimpleLineSymbol
+  Dim pWhite As IRgbColor
+  Dim pBlack As IRgbColor
+  Dim pLyr As IGeoFeatureLayer
+  Dim hx As IRendererPropertyPage
+  Dim pLayerEffects As ILayerEffects
+  Dim pNewFLayer2 As IFeatureLayer
+  Dim pGroupLayer As IGroupLayer
+
+  strName = MyGeneralOperations.MakeUniqueGDBFeatureClassName(pWS2, "Map_Boxes")
+
+  Set pArray = MyGeneralOperations.ReturnGraphicsByNameFromLayout(pMxDoc, "Box", False)
+  If pArray.Count > 0 Then
+    Set pNewPolys = New esriSystem.Array
+    For lngIndex = 0 To pArray.Count - 1
+      Set pGeom = pArray.Element(lngIndex)
+
+      If pGeom.GeometryType = esriGeometryPolygon Then
+        Set pActiveView = pMxDoc.PageLayout
+        Set pDisplay = pActiveView.ScreenDisplay
+        Set pDisplayTransform = pDisplay.DisplayTransformation
+
+        Set pPtColl = pGeom
+        Set pNewPolygon = New Polygon
+        Set pNewPolygon.SpatialReference = pSpRef
+        Set pNewPtColl = pNewPolygon
+
+        For lngIndex2 = 0 To pPtColl.PointCount - 1
+          Set pPoint = pPtColl.Point(lngIndex2)
+          pDisplayTransform.FromMapPoint pPoint, lngX, lngY
+          Set pNewPoint = pMapView.ScreenDisplay.DisplayTransformation.ToMapPoint(lngX, lngY)
+          Set pNewPoint.SpatialReference = pSpRef
+          pNewPtColl.AddPoint pNewPoint
+        Next lngIndex2
+        pNewPolygon.Close
+        pNewPolygon.SimplifyPreserveFromTo
+        pNewPolys.Add pNewPolygon
+        pEnv.Union pNewPolygon.Envelope
+      End If
+    Next lngIndex
+
+    Set pNewFClass = MyGeneralOperations.CreateGDBFeatureClass(pWS, strName, esriFTSimple, pSpRef, esriGeometryPolygon, _
+      , , , , True, ENUM_FileGDB, pEnv, pArray.Count)
+    Set pNewBuff = pNewFClass.CreateFeatureBuffer
+    Set pNewCursor = pNewFClass.Insert(True)
+    lngIDIndex = pNewFClass.FindField("Unique_ID")
+
+    For lngIndex = 0 To pNewPolys.Count - 1
+      Set pNewPolygon = pNewPolys.Element(lngIndex)
+      Set pNewBuff.Shape = pNewPolygon
+      pNewCursor.InsertFeature pNewBuff
+    Next lngIndex
+
+    Set pWhite = MyGeneralOperations.MakeColorRGB(255, 255, 255)
+    Set pBlack = MyGeneralOperations.MakeColorRGB(0, 0, 0)
+
+    Set pNewFlayer = New FeatureLayer
+    Set pNewFlayer.FeatureClass = pNewFClass
+    Set pDataset = pNewFClass
+    pNewFlayer.Name = pDataset.BrowseName & " Fill"
+    Set pLyr = pNewFlayer
+    Set pRender = New SimpleRenderer
+    Set pLineSymbol = New SimpleLineSymbol
+    Set pFillSymbol = New SimpleFillSymbol
+    pLineSymbol.Width = 0
+    pLineSymbol.Style = esriSLSNull
+    pFillSymbol.Color = pWhite
+    pFillSymbol.Outline = pLineSymbol
+    pFillSymbol.Style = esriSFSSolid
+    Set pRender.Symbol = pFillSymbol
+    pRender.Label = "Fill"
+    Set pLyr.Renderer = pRender
+    Set hx = New SingleSymbolPropertyPage
+    pLyr.RendererPropertyPageClassID = hx.ClassID
+    Set pLayerEffects = pNewFlayer
+    pLayerEffects.Transparency = lngTransparency
+
+    Set pNewFLayer2 = New FeatureLayer
+    Set pNewFLayer2.FeatureClass = pNewFClass
+    Set pDataset = pNewFClass
+    pNewFLayer2.Name = pDataset.BrowseName & " Outline"
+    Set pLyr = pNewFLayer2
+    Set pRender = New SimpleRenderer
+    Set pLineSymbol = New SimpleLineSymbol
+    Set pFillSymbol = New SimpleFillSymbol
+    pLineSymbol.Width = 2
+    pLineSymbol.Style = esriSLSSolid
+    pLineSymbol.Color = pBlack
+    pFillSymbol.Outline = pLineSymbol
+    pFillSymbol.Style = esriSFSHollow
+    Set pRender.Symbol = pFillSymbol
+    pRender.Label = "Outline"
+    Set pLyr.Renderer = pRender
+    Set hx = New SingleSymbolPropertyPage
+    pLyr.RendererPropertyPageClassID = hx.ClassID
+
+    Set pGroupLayer = New GroupLayer
+    pGroupLayer.Add pNewFlayer
+    pGroupLayer.Add pNewFLayer2
+    pGroupLayer.Name = pDataset.BrowseName
+    pGroupLayer.Expanded = False
+
+    pMxDoc.FocusMap.AddLayer pGroupLayer
+    pMxDoc.UpdateContents
+    pMxDoc.ActiveView.Refresh
+  End If
+
+ClearMemory:
+  Set pMxDoc = Nothing
+  Set pGeom = Nothing
+  Set pArray = Nothing
+  Set pPolygon = Nothing
+  Set pActiveView = Nothing
+  Set pDisplay = Nothing
+  Set pDisplayTransform = Nothing
+  Set pPoint = Nothing
+  Set pPtColl = Nothing
+  Set pNewPtColl = Nothing
+  Set pNewPolygon = Nothing
+  Set pSpRef = Nothing
+
+End Sub
+
 Public Sub ExportTreatments()
 
   Dim pMxDoc As IMxDocument
@@ -777,147 +951,6 @@ Sub CreateAndApplySlopeRenderer(pRLayer As IRasterLayer)
 
 End Sub
 
-Sub CreateAndApplyAspectRenderer(pRLayer As IRasterLayer)
-
-  Dim pApp As Application
-  Dim pDoc As IMxDocument
-  Set pDoc = ThisDocument
-  Dim pMap As IMap
-  Set pMap = pDoc.FocusMap
-
-  Dim pRaster As IRaster
-  Set pRaster = pRLayer.Raster
-
-  Dim pClassRen As IRasterClassifyColorRampRenderer
-  Set pClassRen = New RasterClassifyColorRampRenderer
-  Dim pRasRen As IRasterRenderer
-  Set pRasRen = pClassRen
-
-  Set pRasRen.Raster = pRaster
-  pClassRen.ClassCount = 5
-
-  pRasRen.Update
-
-  pClassRen.ClassCount = 10
-  pRasRen.Update
-
-  Dim pClassUIProps As IRasterClassifyUIProperties
-  Set pClassUIProps = pClassRen
-
-  Dim pClassify As IClassify
-  Set pClassify = New DefinedInterval
-  Set pClassUIProps.ClassificationMethod = pClassify.ClassID
-  pRasRen.Update
-
-  Dim pFSymbol As IFillSymbol
-
-  Dim pFlat As IRgbColor
-  Set pFlat = New RgbColor
-  pFlat.RGB = RGB(176, 176, 176)
-  Set pFSymbol = New SimpleFillSymbol
-  pFSymbol.Color = pFlat
-  pClassRen.Break(0) = -1
-  pClassRen.Symbol(0) = pFSymbol
-  pClassRen.Label(0) = "Flat"
-
-  Dim pNorth As IRgbColor
-  Set pNorth = New RgbColor
-  pNorth.RGB = RGB(255, 0, 0)
-  Set pFSymbol = New SimpleFillSymbol
-  pFSymbol.Color = pNorth
-  pClassRen.Break(1) = -0.00001
-  pClassRen.Symbol(1) = pFSymbol
-  pClassRen.Label(1) = "North (0° - 22.5°)"
-
-  Dim pNorthEast As IRgbColor
-  Set pNorthEast = New RgbColor
-  pNorthEast.RGB = RGB(255, 166, 0)
-  Set pFSymbol = New SimpleFillSymbol
-  pFSymbol.Color = pNorthEast
-  pClassRen.Break(2) = 22.5
-  pClassRen.Symbol(2) = pFSymbol
-  pClassRen.Label(2) = "Northeast (22.5° - 67.5°)"
-
-  Dim pEast As IRgbColor
-  Set pEast = New RgbColor
-  pEast.RGB = RGB(255, 255, 0)
-  Set pFSymbol = New SimpleFillSymbol
-  pFSymbol.Color = pEast
-  pClassRen.Break(3) = 67.5
-  pClassRen.Symbol(3) = pFSymbol
-  pClassRen.Label(3) = "East (67.5° - 112.5°)"
-
-  Dim pSouthEast As IRgbColor
-  Set pSouthEast = New RgbColor
-  pSouthEast.RGB = RGB(0, 255, 0)
-  Set pFSymbol = New SimpleFillSymbol
-  pFSymbol.Color = pSouthEast
-  pClassRen.Break(4) = 112.5
-  pClassRen.Symbol(4) = pFSymbol
-  pClassRen.Label(4) = "Southeast (112.5° - 157.5°)"
-
-  Dim pSouth As IRgbColor
-  Set pSouth = New RgbColor
-  pSouth.RGB = RGB(0, 255, 255)
-  Set pFSymbol = New SimpleFillSymbol
-  pFSymbol.Color = pSouth
-  pClassRen.Break(5) = 157.5
-  pClassRen.Symbol(5) = pFSymbol
-  pClassRen.Label(5) = "South (157.5° - 202.5°)"
-
-  Dim pSouthWest As IRgbColor
-  Set pSouthWest = New RgbColor
-  pSouthWest.RGB = RGB(0, 166, 255)
-  Set pFSymbol = New SimpleFillSymbol
-  pFSymbol.Color = pSouthWest
-  pClassRen.Break(6) = 202.5
-  pClassRen.Symbol(6) = pFSymbol
-  pClassRen.Label(6) = "Southwest (202.5° - 247.5°)"
-
-  Dim pWest As IRgbColor
-  Set pWest = New RgbColor
-  pWest.RGB = RGB(0, 0, 255)
-  Set pFSymbol = New SimpleFillSymbol
-  pFSymbol.Color = pWest
-  pClassRen.Break(7) = 247.5
-  pClassRen.Symbol(7) = pFSymbol
-  pClassRen.Label(7) = "West (247.5° - 292.5°)"
-
-  Dim pNorthWest As IRgbColor
-  Set pNorthWest = New RgbColor
-  pNorthWest.RGB = RGB(255, 0, 255)
-  Set pFSymbol = New SimpleFillSymbol
-  pFSymbol.Color = pNorthWest
-  pClassRen.Break(8) = 292.5
-  pClassRen.Symbol(8) = pFSymbol
-  pClassRen.Label(8) = "Northwest (292.5° - 337.5°)"
-
-  Set pFSymbol = New SimpleFillSymbol
-  pFSymbol.Color = pNorth
-  pClassRen.Break(9) = 337.5
-  pClassRen.Symbol(9) = pFSymbol
-  pClassRen.Label(9) = "North (337.5° - 360°)"
-
-  pRasRen.Update
-
-  Set pRLayer.Renderer = pClassRen
-  pDoc.ActiveView.ContentsChanged
-  pDoc.UpdateContents
-
-  pDoc.ActiveView.Refresh
-
-End Sub
-
-Public Sub TestAspectRenderer()
-
-  Dim pMxDoc As IMxDocument
-  Set pMxDoc = ThisDocument
-  Dim pRLayer As IRasterLayer
-  Set pRLayer = MyGeneralOperations.ReturnLayerByName("Aspect", pMxDoc.FocusMap)
-  CreateAndApplyAspectRenderer pRLayer
-
-End Sub
-
 Public Sub TestSlopeRenderer()
 
   Dim pMxDoc As IMxDocument
@@ -925,6 +958,31 @@ Public Sub TestSlopeRenderer()
   Dim pRLayer As IRasterLayer
   Set pRLayer = MyGeneralOperations.ReturnLayerByName("Slope", pMxDoc.FocusMap)
   CreateAndApplySlopeRenderer pRLayer
+
+End Sub
+
+Public Sub TestElevRenderer()
+
+  Dim pMxDoc As IMxDocument
+  Set pMxDoc = ThisDocument
+  Dim pRLayer As IRasterLayer
+  Set pRLayer = MyGeneralOperations.ReturnLayerByName("Elevation", pMxDoc.FocusMap)
+  CreateAndApplyElevationRenderer pRLayer
+
+End Sub
+
+Public Sub TestRenderer()
+
+  Dim pMxDoc As IMxDocument
+  Set pMxDoc = ThisDocument
+  Dim pFLayer As IFeatureLayer
+  Set pFLayer = MyGeneralOperations.ReturnLayerByName("Historical Fires", pMxDoc.FocusMap)
+  Dim strFieldName As String
+  strFieldName = "AllLT_2010"
+  Dim strLabel As String
+  strLabel = "Treatments"
+
+  CreateAndApplyUVRenderer pFLayer, strFieldName, strLabel
 
 End Sub
 

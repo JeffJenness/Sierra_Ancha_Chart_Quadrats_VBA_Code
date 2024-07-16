@@ -1,6 +1,23 @@
 Attribute VB_Name = "Margaret_Functions_3"
 Option Explicit
 
+Public Sub RunExport()
+  ExportSubsetsOfSpeciesShapefiles_SA True
+End Sub
+
+Public Sub RunSpecialExport()
+  Dim varSpecies() As Variant
+  Dim strFolder As String
+
+  ReDim varSpecies(0)
+  strFolder = "D:\arcGIS_stuff\consultation\Margaret_Moore\Sierra_Ancha\Special_Exports\CJ_Feb_24_2024"
+  If Not aml_func_mod.ExistFileDir(strFolder) Then MyGeneralOperations.CreateNestedFoldersByPath (strFolder)
+
+  varSpecies = Array("Bouteloua curtipendula", "Bouteloua eriopoda", "Bouteloua hirsuta")
+  ExportSubsetsOfSpeciesShapefiles_SpecialSizesConversions varSpecies, strFolder, False, False
+
+End Sub
+
 Public Sub ExportSubsetsOfSpeciesShapefiles_SA(Optional booDoAll As Boolean = False, Optional booDo10 As Boolean = False)
 
   Dim lngStartYear As Long
@@ -353,7 +370,14 @@ Public Function CreateArrayOfAllSpeciesNames() As Variant()
 
   Call DeclareWorkspaces(strCombinePath, , , , strRecreatedModifiedRoot, , strExtractShapefileFolder, strFinalFolder)
   Set pWSFact = New FileGDBWorkspaceFactory
-  Set pWS = pWSFact.OpenFromFile(strFinalFolder & "\Combined_by_Site.gdb", 0)
+  Set pWS = pWSFact.OpenFromFile(strFinalFolder & "\Data\Quadrat_Spatial_Data\Combined_by_Site.gdb", 0)
+
+  If ExistFileDir(strFinalFolder & "\Data\Quadrat_Spatial_Data\Combined_by_Site.gdb") Then
+    Set pWS = pWSFact.OpenFromFile(strFinalFolder & "\Data\Quadrat_Spatial_Data\Combined_by_Site.gdb", 0)
+  Else
+    Set pWS = pWSFact.OpenFromFile(strFinalFolder & "\Combined_by_Site.gdb", 0)
+  End If
+
   Set pFeatWS = pWS
   Set pCoverFClass = pFeatWS.OpenFeatureClass("Cover_All")
   Set pDensityFClass = pFeatWS.OpenFeatureClass("Density_All")

@@ -164,4 +164,18 @@ Public Sub AddLineToArray(strLine As String, strArray() As String)
 
 End Sub
 
+Public Function CombineLinesOfText(strArray() As String) As String
+
+  Dim lngIndex As Long
+  Dim strReturn As String
+  If Not IsDimmed(strArray) Then
+    CombineLinesOfText = ""
+  Else
+    For lngIndex = 0 To UBound(strArray)
+      strReturn = strReturn & strArray(lngIndex) & vbCrLf
+    Next lngIndex
+  End If
+  CombineLinesOfText = strReturn
+End Function
+
 
