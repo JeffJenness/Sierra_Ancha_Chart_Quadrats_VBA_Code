@@ -540,194 +540,6 @@ Public Function CreateShapefile(sPath As String, sName As String, pSpatialRefere
 
 End Function
 
-Public Function CreateShapefile2(sPath As String, sName As String, pSpatialReference As ISpatialReference, _
-    strShapeType As String, pAddFields As esriSystem.IVariantArray) As IFeatureClass     ' Don't include filename!
-
-  If Right(sPath, 4) = ".shp" Then sPath = ReturnDir(sPath)
-  If Right(sName, 4) = ".shp" Then sName = Left(sName, Len(sName) - 4)
-
-  Dim pGeomDef As IGeometryDef
-  Dim pGeomDefEdit As IGeometryDefEdit
-  Set pGeomDef = New GeometryDef
-  Set pGeomDefEdit = pGeomDef
-  With pGeomDefEdit
-    Select Case strShapeType
-      Case "Polygon", "polygon"
-        .GeometryType = esriGeometryPolygon
-      Case "Polyline", "polyline"
-        .GeometryType = esriGeometryPolyline
-      Case "Point", "point"
-        .GeometryType = esriGeometryPoint
-      Case "Multipoint", "multipoint", "MultiPoint"
-        .GeometryType = esriGeometryMultipoint
-      Case "Multipatch", "multipatch", "MultiPatch"
-        .GeometryType = esriGeometryMultiPatch
-      Case Else
-        MsgBox "Invalid Shape Type [" & strShapeType & "]!  This function is only written to generate " & _
-            "Point, Polyline, Polygon, Multipoint or Multipatch shapefiles...", vbCritical, "Invalid Shape Type:"
-    End Select
-    Set .SpatialReference = pSpatialReference
-  End With
-
-  Dim pFWS As IFeatureWorkspace
-  Dim pWorkspaceFactory As IWorkspaceFactory
-  Set pWorkspaceFactory = New ShapefileWorkspaceFactory
-
-  If Not ExistFileDir(sPath) Then
-    MsgBox "Unable to create Feature Class:" & vbCrLf & _
-           sPath & " is not a valid workspace...", , "Failed to Create Feature Class:"
-    Set CreateShapefile2 = Nothing
-    Exit Function
-  End If
-
-  Set pFWS = pWorkspaceFactory.OpenFromFile(sPath, 0)
-
-  Dim pFields As IFields
-  Dim pFieldsEdit As IFieldsEdit
-  Set pFields = New Fields
-  Set pFieldsEdit = pFields
-
-  Dim pField As iField
-  Dim pFieldEdit As IFieldEdit
-
-  Set pField = New Field
-  Set pFieldEdit = pField
-  pFieldEdit.Name = "Shape"
-  pFieldEdit.Type = esriFieldTypeGeometry
-
-  Set pFieldEdit.GeometryDef = pGeomDef
-  pFieldsEdit.AddField pField
-
-  Dim lngIndex As Long
-  For lngIndex = 0 To pAddFields.Count - 1
-    pFieldsEdit.AddField pAddFields.Element(lngIndex)
-  Next lngIndex
-
-  Dim booFileExists As Boolean
-  Dim strCheckString As String
-  If Right(sPath, 1) = "\" Then
-    strCheckString = sPath & sName & ".shp"
-  Else
-    strCheckString = sPath & "\" & sName & ".shp"
-  End If
-
-  booFileExists = (Dir(strCheckString) <> "")
-
-  If booFileExists Then
-    MsgBox "The following file already exists:" & vbCrLf & vbCrLf & strCheckString & vbCrLf & vbCrLf & _
-           "Please select a new filename...", , "Duplicate Filename:"
-    Set CreateShapefile2 = Nothing
-    Exit Function
-  End If
-
-  Dim pFeatClass As IFeatureClass
-  Set pFeatClass = pFWS.CreateFeatureClass(sName, pFields, Nothing, _
-                                           Nothing, esriFTSimple, "Shape", "")
-
-  Set CreateShapefile2 = pFeatClass
-
-End Function
-
-Public Function TempPathLocation() As String
-
-  Dim sBuffer As String
-  sBuffer = Space(strMAXPATH)
-  If GetTempPath(strMAXPATH, sBuffer) <> 0 Then
-    TempPathLocation = Left$(sBuffer, _
-      InStr(sBuffer, vbNullChar) - 1)
-  Else
-    TempPathLocation = ""
-  End If
-
-End Function
-
-Public Function GetTheUserName() As String
-
-  Dim sBuffer As String
-  Dim sUName As String
-  Dim lSize As Long
-  sBuffer = Space$(255)
-  lSize = Len(sBuffer)
-  Call GetUserName(sBuffer, lSize)
-  If lSize > 0 Then
-    sUName = Left$(sBuffer, lSize)
-  Else
-    sUName = vbNullString
-  End If
-  GetTheUserName = BasicTrimAvenue(sUName, "", Chr(0))     ' NEED TO PEEL OFF THAT LAST ODD CHARACTER
-
-End Function
-
-Public Function BasicTrimAvenue(aString As String, aTrimLeft As String, aTrimRight As String) As String
-
-  Do While (aString <> "") And (InStr(1, aTrimRight, Right(aString, 1), vbTextCompare) > 0)
-    aString = Left(aString, Len(aString) - 1)
-  Loop
-  Do While (aString <> "") And (InStr(1, aTrimLeft, Left(aString, 1), vbTextCompare) > 0)
-    aString = Right(aString, Len(aString) - 1)
-  Loop
-
-  BasicTrimAvenue = aString
-
-End Function
-
-Public Function InsertCommas(InputValue As Variant) As String
-
-  Dim theString As String
-  theString = CStr(InputValue)
-
-  Dim theDecLocation As Long
-  theDecLocation = InStr(theString, ".")
-
-  Dim HasDecimal As Boolean
-  HasDecimal = theDecLocation > 0
-
-  Dim theLength As Long
-  theLength = Len(theString)
-
-  Dim theBaseNumber As String
-  Dim theRemainder As String
-
-  If HasDecimal Then
-    theRemainder = Right(theString, theLength - theDecLocation)
-    theBaseNumber = Left(theString, theDecLocation - 1)
-  Else
-    theRemainder = ""
-    theBaseNumber = theString
-  End If
-
-  Dim theCount As Long
-  theCount = Len(theBaseNumber)
-
-  Dim theCommaString As String
-
-  If theCount > 3 Then
-    Dim anIndex As Long
-    For anIndex = (theCount - 2) To 1 Step -3
-      theCommaString = Mid(theBaseNumber, anIndex, 3) & "," & theCommaString
-      If anIndex < 4 Then
-        theCommaString = Left(theBaseNumber, anIndex - 1) & "," & theCommaString
-      End If
-    Next anIndex
-
-    Do While Right(theCommaString, 1) = ","
-      theCommaString = Left(theCommaString, Len(theCommaString) - 1)
-    Loop
-    Do While Left(theCommaString, 1) = ","
-      theCommaString = Right(theCommaString, Len(theCommaString) - 1)
-    Loop
-  Else
-    theCommaString = theBaseNumber
-  End If
-
-  If HasDecimal Then
-    theCommaString = theCommaString & "." & theRemainder
-  End If
-
-  InsertCommas = theCommaString
-
-End Function
-
 Public Function ClipExtension2(strPathName As String) As String
 
   Dim lngLastDot As Long
@@ -779,26 +591,6 @@ Public Function ClipExtension(strPathName As String) As String
 
 End Function
 
-Public Function FieldIsNumeric(pTheField As iField) As Boolean
-
-  Dim theFieldType As esriFieldType
-  theFieldType = pTheField.Type
-
-  FieldIsNumeric = _
-    (theFieldType = esriFieldTypeSmallInteger) Or (theFieldType = esriFieldTypeDouble) Or (theFieldType = esriFieldTypeInteger) Or _
-          (theFieldType = esriFieldTypeSingle)
-
-End Function
-
-Public Function FieldIsString(pTheField As iField) As Boolean
-
-  Dim theFieldType As esriFieldType
-  theFieldType = pTheField.Type
-
-  FieldIsString = (theFieldType = esriFieldTypeString)
-
-End Function
-
 Public Function SetExtension(strPathName As String, strExtension As String) As String
 
   Dim theClippedPath As String
@@ -816,21 +608,6 @@ Public Function GetExtensionText(strPathName As String) As String
     GetExtensionText = ""
   Else
     GetExtensionText = strDirTokens(UBound(strDirTokens))
-  End If
-
-End Function
-
-Public Function GetFullFileString(str83Type As String) As String
-
-  Dim lLen As Long
-  Dim sBuffer As String
-
-  sBuffer = String$(strMAXPATH, 0)
-  lLen = GetLongPathName(str83Type, sBuffer, Len(sBuffer))
-  If lLen > 0 And err.Number = 0 Then
-    GetFullFileString = Left$(sBuffer, lLen)
-  Else
-    GetFullFileString = str83Type
   End If
 
 End Function
@@ -956,6 +733,32 @@ On Error Resume Next
   Next i
 
 End Sub
+
+Public Function After(str As String, SearchStr As String) As String
+
+Dim position As Long
+Dim length As Long
+
+  position = InStr(str, SearchStr)
+  length = Len(SearchStr)
+  If Not (position = 0) Then
+   After = Mid(str, position + length)
+  End If
+
+End Function
+
+Public Function Before(str As String, SearchStr As String) As String
+
+Dim position As Long
+Dim length As Long
+
+  position = InStr(str, SearchStr)
+  length = Len(SearchStr)
+  If Not (position = 0) Then
+   Before = Mid(str, 1, position - 1)
+  End If
+
+End Function
 
 Function ExistFileDir(sTest As String) As Boolean
 
@@ -1111,107 +914,6 @@ On Error Resume Next
 
 End Sub
 
-Private Function Sort_Num(str As String, SortOption) As String
-
-Dim i As Long
-Dim j As Long
-Dim min As Long
-Dim max As Long
-Dim best_value As String
-Dim best_j As Long
-Dim sortArray() As String
-Dim sorted As String
-
-  ParseStringR (str), sortArray
-
-  min = LBound(sortArray)
-  max = UBound(sortArray)
-
-  For i = min To max - 1
-    best_value = sortArray(i)
-    best_j = i
-
-    For j = i + 1 To max
-      If Val(sortArray(j)) < Val(best_value) Then
-        best_value = sortArray(j)
-        best_j = j
-      End If
-    Next j
-
-    sortArray(best_j) = sortArray(i)
-    sortArray(i) = best_value
-  Next i
-
-  If UCase(SortOption) = "-DESCEND" Then
-    For i = max To min Step -1
-      sorted = sorted & sortArray(i) & ","
-    Next i
-  Else
-    For i = min To max
-      sorted = sorted & sortArray(i) & ","
-    Next i
-  End If
-
-  Mid(sorted, Len(sorted), 1) = " "
-  str = sorted
-  Sort_Num = sorted
-
-End Function
-
-Private Function Sort_Char(str As String, SortOption, Optional ReturnQuoted) As String
-
-Dim i As Long
-Dim j As Long
-Dim min As Long
-Dim max As Long
-Dim best_value As String
-Dim best_j As Long
-Dim sortArray() As String
-Dim sorted As String
-
-If IsMissing(ReturnQuoted) Then
-  ReturnQuoted = False
-End If
-If Not (ReturnQuoted = False) Then
-  ReturnQuoted = True
-End If
-
-ParseStringR (str), sortArray, ReturnQuoted
-
-min = LBound(sortArray)
-max = UBound(sortArray)
-
-  For i = min To max - 1
-    best_value = sortArray(i)
-    best_j = i
-
-    For j = i + 1 To max
-      If sortArray(j) < best_value Then
-      best_value = sortArray(j)
-      best_j = j
-      End If
-    Next j
-
-    sortArray(best_j) = sortArray(i)
-    sortArray(i) = best_value
-  Next i
-
-  If UCase(SortOption) = "-DESCEND" Then
-    For i = max To min Step -1
-      sorted = sorted & sortArray(i) & " "
-    Next i
-  Else
-    For i = min To max
-      sorted = sorted & sortArray(i) & " "
-    Next i
-  End If
-  Mid(sorted, Len(sorted), 1) = " "
-
-  str = sorted
-  Sort_Char = sorted
-
-End Function
-
 Public Function Subst(str As String, SearchChar As String, Optional ReplaceChar) As String
 
 Dim complete As Boolean
@@ -1251,117 +953,6 @@ Loop
 
 Subst = tmpstr
 
-End Function
-
-Public Function Substr(str As String, position As Long, Optional NumChars) As String
-
-If IsMissing(NumChars) Then
-  If position = 0 Or position > Len(str) Then
-    Substr = ""
-  Else
-    Substr = Mid(str, position)
-  End If
-Else
-  If position = 0 Or position > Len(str) Then
-    Substr = ""
-  Else
-   Substr = Mid(str, position, NumChars)
-  End If
-End If
-
-End Function
-
-Public Function Token(ElemList As String, Arg As String, ParamArray OtherArgs()) As Variant
-
-Dim strArray() As String
-Dim i As Long
-Dim temp As String
-Dim from_elem  As Long
-Dim to_elem As Long
-Dim start_elem As Long
-Dim insertStr As String
-Dim DELETE As Long
-Dim SearchStr As String
-
-  ParseStringR (ElemList), strArray
-  Arg = Subst(Arg, "-")
-
-  Select Case UCase(Arg)
-
-    Case "COUNT"
-      Token = UBound(strArray) + 1
-
-    Case "FIND"
-      SearchStr = OtherArgs(0)
-      Token = 0
-      For i = 0 To UBound(strArray)
-        If UCase(SearchStr) = UCase(strArray(i)) Then
-          Token = i + 1
-        End If
-      Next i
-
-    Case "MOVE"
-      from_elem = OtherArgs(0) - 1
-      to_elem = OtherArgs(1)
-      temp = strArray(to_elem)
-      strArray(to_elem) = strArray(from_elem)
-      For i = from_elem To to_elem - 1
-        strArray(i) = strArray(i + 1)
-        Next i
-         strArray(i) = temp
-      For i = 0 To UBound(strArray) - 1
-        Token = Token & strArray(i) & ","
-      Next i
-
-    Case "INSERT"
-      ReDim Preserve strArray(UBound(strArray) + 1)
-      start_elem = OtherArgs(0) - 1
-      insertStr = OtherArgs(1)
-      For i = UBound(strArray) To start_elem Step -1
-        strArray(i) = strArray(i - 1)
-        Next i
-        strArray(start_elem) = insertStr
-        For i = 0 To UBound(strArray) - 1
-        Token = Token & strArray(i) & ","
-      Next i
-
-    Case "DELETE"
-      DELETE = OtherArgs(0) - 1
-      For i = DELETE To UBound(strArray) - 1
-        strArray(i) = strArray(i + 1)
-      Next i
-      For i = 0 To UBound(strArray) - 1
-        Token = Token & strArray(i) & ","
-      Next i
-
-    Case "REPLACE"
-      strArray(OtherArgs(1) - 1) = OtherArgs(0)
-      For i = 0 To UBound(strArray)
-        Token = Token & strArray(i) & ","
-      Next i
-
-    Case "SWITCH"
-      from_elem = OtherArgs(0) - 1
-      to_elem = OtherArgs(1) - 1
-      temp = strArray(to_elem)
-      strArray(to_elem) = strArray(from_elem)
-      strArray(from_elem) = temp
-      For i = 0 To UBound(strArray)
-        Token = Token & strArray(i) & ","
-      Next i
-
-    Case Else
-  End Select
-
-End Function
-
-Public Function PathIsDirectory(strPath As String) As Boolean
-
-  On Error GoTo ErrHandler:
-  PathIsDirectory = GetAttr(strPath) = vbDirectory
-  Exit Function
-ErrHandler:
-  PathIsDirectory = False
 End Function
 
 Public Function ReturnFilename2(strPathName As String) As String

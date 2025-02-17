@@ -9,7 +9,7 @@ Public Sub DeclareWorkspaces_Maps(strOrigShapefiles As String, Optional strModif
   booUseCurrentDate = True
 
   Dim strSpecifiedDate As String
-  strSpecifiedDate = "2023_04_10"
+  strSpecifiedDate = "2024_11_07"
 
   Dim strDate As String
   Dim strDateSplit() As String
@@ -701,7 +701,6 @@ Public Sub MakePageNumbers(Optional pPageNumberByPlotDate As Collection)
 
     strFileNames(lngIndex) = strJustName
   Next lngIndex
-
   Dim varTypes() As Variant
   ReDim varTypes(3)
   varTypes(0) = enum_TypeString
@@ -721,6 +720,7 @@ Public Sub MakePageNumbers(Optional pPageNumberByPlotDate As Collection)
   Set pPageNumberByPlotDate = New Collection
   For lngIndex = 0 To UBound(strFileNames)
     strJustName = varSortBySite(3, lngIndex)
+
     pPageByNameColl.Add lngIndex + 1, strJustName
     strReport = strReport & strJustName & vbTab & "p. " & Format(lngIndex + 1 + 3, "#,##0") & vbCrLf
 
@@ -751,9 +751,40 @@ Public Sub MakePageNumbers(Optional pPageNumberByPlotDate As Collection)
     strSortByQuadReport = strSortByQuadReport & strJustName & vbTab & "p. " & Format(lngPageNum, "#,##0") & vbCrLf
   Next lngIndex
 
+  Dim strAltFileNames() As String
+  ReDim strAltFileNames(UBound(strFileNames))
+  Dim strReport2 As String
+  Dim strAltName As String
+
+  For lngIndex = 0 To UBound(strFileNames)
+    strJustName = strFileNames(lngIndex)
+    strJustName = Replace(strJustName, "A-1_", "A-01_")
+    strJustName = Replace(strJustName, "B-2_", "B-02_")
+    strJustName = Replace(strJustName, "C-3_", "C-03_")
+    strJustName = Replace(strJustName, "D-4_", "D-04_")
+    strJustName = Replace(strJustName, "A-5_", "A-05_")
+    strJustName = Replace(strJustName, "B-6_", "B-06_")
+    strJustName = Replace(strJustName, "C-7_", "C-07_")
+    strJustName = Replace(strJustName, "D-8_", "D-08_")
+    strJustName = Replace(strJustName, "A-9_", "A-09_")
+    strAltFileNames(lngIndex) = strJustName
+  Next lngIndex
+  QuickSort.StringsAscending strAltFileNames, 0, UBound(strAltFileNames)
+
+  For lngIndex = 0 To UBound(strAltFileNames)
+    strAltName = strAltFileNames(lngIndex)
+    lngPageNum = lngIndex + 4
+
+    strReport2 = strReport2 & strAltName & vbTab & "p. " & Format(lngPageNum, "#,##0") & vbCrLf
+
+  Next lngIndex
+
+  strReport = Replace(strReport, "ND_", "Natural_Drainages_")
+  strReport2 = Replace(strReport2, "ND_", "Natural_Drainages_")
+
   Dim pDataObj As New MSForms.DataObject
   pDataObj.Clear
-  pDataObj.SetText strReport
+  pDataObj.SetText strReport2
   pDataObj.PutInClipboard
 
   Debug.Print "Done..."

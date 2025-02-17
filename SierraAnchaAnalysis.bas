@@ -7,25 +7,7 @@ Attribute RunAsBatch.VB_ProcData.VB_Invoke_Func = ""
   Dim lngTimeStart As Long
   lngTimeStart = GetTickCount
 
-  OrganizeData_SA
-  ReviseShapefiles_SA
-  ReviseShapefiles_SA
-  ConvertPointShapefiles_SA
-  More_Margaret_Functions.RepairOverlappingPolygons_SA
-  AddEmptyFeaturesAndFeatureClasses_SA (False)  ' <---
-  More_Margaret_Functions.RecreateSubsetsOfConvertedDatasets_SA  ' <---
-  AddEmptyFeaturesAndFeatureClassesToCleaned_SA
-  ShiftFinishedShapefilesToCoordinateSystem_SA
-  ExportFinalDataset_SA
-
-  More_Margaret_Functions.SummarizeSpeciesBySite_SA
-  More_Margaret_Functions.SummarizeSpeciesByCorrectQuadrat_SA
-  More_Margaret_Functions.SummarizeYearByCorrectQuadratByYear_SA
-  SierraAncha_Compare.GenerateRData
-
-  Margaret_Functions_3.ExportSubsetsOfSpeciesShapefiles_SA True, False
-
-  CreateFinalTables_SA
+  Margaret_Functions_3.ExportSubsetsOfSpeciesShapefiles_v2 True, False, False, True
 
   Debug.Print "============================"
   Debug.Print "Batch Process Complete:"
@@ -1334,6 +1316,111 @@ Public Sub OrganizeData_SA()
 
   End If
 
+  Dim strSourcePath11 As String
+  strSourcePath11 = "D:\arcGIS_stuff\consultation\Margaret_Moore\Sierra_Ancha\Original_Data\2024\Final"
+
+  Dim pConvertNamesOldTo2024 As Collection
+  Dim pConvertNames2024ToOld As Collection
+  Dim varNameLinks_2024() As Variant
+  Call FillNameConverters_2024(varNameLinks_2024, pConvertNames2024ToOld, pConvertNamesOldTo2024)
+  Set pAllPaths = MyGeneralOperations.ReturnFilesFromNestedFolders2(strSourcePath11, "")
+  varCheckArray = BuildCheckArray(pAllPaths)
+
+  lngCount = pAllPaths.Count
+  lngCounter = 0
+  Debug.Print "Round 5 [2024]: " & Format(lngCount, "#,##0") & " paths found..."
+
+  If lngCount > 0 Then
+
+    pSBar.ShowProgressBar "Copying Files...", 0, lngCount, 1, True
+    pProg.position = 0
+
+    For lngIndex = 0 To lngCount - 1
+      If lngIndex Mod 500 = 0 Then DoEvents
+      strPath = pAllPaths.Element(lngIndex)
+      pProg.Step
+      If StrComp(Right(strPath, 5), ".lock", vbTextCompare) <> 0 Then
+        If lngIndex Mod 100 = 0 Then
+          DoEvents
+        End If
+        strExt = aml_func_mod.GetExtensionText(strPath)
+        booTransfer = False
+
+        If StrComp(strExt, "cpg", vbTextCompare) = 0 Or StrComp(strExt, "dbf", vbTextCompare) = 0 Or _
+            StrComp(strExt, "sbn", vbTextCompare) = 0 Or StrComp(strExt, "sbx", vbTextCompare) = 0 Or _
+            StrComp(strExt, "shp", vbTextCompare) = 0 Or StrComp(strExt, "shx", vbTextCompare) = 0 Or _
+            StrComp(strExt, "prj", vbTextCompare) = 0 Or StrComp(strExt, "fbn", vbTextCompare) = 0 Or _
+            StrComp(strExt, "ain", vbTextCompare) = 0 Or StrComp(strExt, "fbx", vbTextCompare) = 0 Or _
+            StrComp(strExt, "aih", vbTextCompare) = 0 Or StrComp(strExt, "ixs", vbTextCompare) = 0 Or _
+            StrComp(strExt, "mxs", vbTextCompare) = 0 Or StrComp(strExt, "qix", vbTextCompare) = 0 Or _
+            StrComp(strExt, "atx", vbTextCompare) = 0 Then
+          booTransfer = True
+        ElseIf StrComp(Right(strPath, 8), ".shp.xml", vbTextCompare) = 0 Then
+          booTransfer = True
+          strExt = ".shp.xml"
+        End If
+
+        If booTransfer Then
+          strFilename = aml_func_mod.ReturnFilename2(strPath)
+          strFilename = Replace(strFilename, ".shp.xml", "", , , vbTextCompare)
+          strFilename = aml_func_mod.ClipExtension2(strFilename)
+          strReplaceName = Replace(strFilename, "_CF", "", , , vbTextCompare)
+          strReplaceName = Replace(strReplaceName, "_DF", "", , , vbTextCompare)
+          strReplaceName = Replace(strReplaceName, "_C_F", "", , , vbTextCompare)
+          strReplaceName = Replace(strReplaceName, "_D_F", "", , , vbTextCompare)
+          strReplaceName = Replace(strReplaceName, "_NO_SpF", "", , , vbTextCompare) ' FOR NOV. 2023 DATA
+          strReplaceName = Replace(strReplaceName, "_NO_Sp", "", , , vbTextCompare) ' FOR NOV. 2023 DATA
+
+          If StrComp(Right(strFilename, 3), "_CF", vbTextCompare) = 0 Or _
+              StrComp(Right(strFilename, 3), "_DF", vbTextCompare) = 0 Or _
+              InStr(1, strFilename, "_CF_", vbTextCompare) > 0 Or _
+              InStr(1, strFilename, "_DF_", vbTextCompare) > 0 Or _
+              InStr(1, strFilename, "_C_F", vbTextCompare) > 0 Or _
+              InStr(1, strFilename, "_D_F", vbTextCompare) > 0 Or _
+              InStr(1, strFilename, "_NO_Sp", vbTextCompare) > 0 Then
+
+            UpdateCheckArray varCheckArray, strPath
+
+            If MyGeneralOperations.CheckCollectionForKey(pConvertNames2024ToOld, strFilename) Then
+              strQuadrat = pConvertNames2024ToOld.Item(strFilename)
+
+              If InStr(1, strQuadrat, "Natural_Drainages", vbTextCompare) > 0 Then
+
+                strModPath = strCombinePath & "\" & strQuadrat & "\" & strQuadrat & "_2024" & _
+                    IIf((InStr(1, strFilename, "_CF_", vbTextCompare) > 0) Or _
+                        (StrComp(Right(strFilename, 3), "_CF", vbTextCompare) = 0) Or _
+                        (StrComp(Right(strFilename, 4), "_C_F", vbTextCompare) = 0), "_C", "_D") & "." & strExt
+                strModPath = Replace(strModPath, "..", ".", , , vbTextCompare)
+
+                If Not aml_func_mod.ExistFileDir(strModPath) Then
+                  strDir = aml_func_mod.ReturnDir3(strModPath, False)
+                  If Not aml_func_mod.ExistFileDir(strDir) Then _
+                    MyGeneralOperations.CreateNestedFoldersByPath strDir
+                    lngCounter = lngCounter + 1
+                    CopyFile strPath, strModPath, True
+                End If
+              End If ' END JUST DOING NATURAL DRAINAGES
+            Else
+              Debug.Print "Failed to find '" & strFilename & "'" & vbCrLf & _
+                  "...Path = '" & strPath & "'..."
+            End If
+          End If
+        Else
+
+        End If
+      End If
+    Next lngIndex
+
+    strCheckPathReport = ReturnMissingShapefiles(varCheckArray)
+    If strCheckPathReport <> "" Then
+      Debug.Print "2024: Check Following Shapefiles" & vbCrLf & strCheckPathReport
+    End If
+
+    pSBar.HideProgressBar
+    pProg.position = 0
+
+  End If
+
   Dim strQuadrats() As String
   Dim pPlotToQuadratConversion As Collection
   Dim pQuadratToPlotConversion As Collection
@@ -2273,7 +2360,7 @@ Public Sub DeclareWorkspaces(strOrigShapefiles As String, Optional strModifiedRo
   booUseCurrentDate = False
 
   Dim strSpecifiedDate As String
-  strSpecifiedDate = "2024_07_15"
+  strSpecifiedDate = "2024_12_22"
 
   Dim strDate As String
   Dim strDateSplit() As String
@@ -3232,6 +3319,120 @@ Public Sub AddRestOfConversions(varNameLinks() As Variant)
 
 End Sub
 
+Public Sub FillNameConverters_2024(varNameLinks_2024() As Variant, p2024toOld As Collection, pOldTo2024 As Collection)
+
+  ReDim varNameLinks_2024(93)
+
+  varNameLinks_2024(0) = Array("Q_ND_10_2024_CF", "Natural_Drainages_Watershed_B_Q10")
+  varNameLinks_2024(1) = Array("Q_ND_10_2024_DF", "Natural_Drainages_Watershed_B_Q10")
+  varNameLinks_2024(2) = Array("Q_ND_11_2024_CF", "Natural_Drainages_Watershed_C_Q11")
+  varNameLinks_2024(3) = Array("Q_ND_11_2024_DF", "Natural_Drainages_Watershed_C_Q11")
+  varNameLinks_2024(4) = Array("Q_ND_12_2024_CF", "Natural_Drainages_Watershed_D_Q12")
+  varNameLinks_2024(5) = Array("Q_ND_12_2024_DF", "Natural_Drainages_Watershed_D_Q12")
+  varNameLinks_2024(6) = Array("Q_ND_13_2024_CF", "Natural_Drainages_Watershed_A_Q13")
+  varNameLinks_2024(7) = Array("Q_ND_13_2024_DF", "Natural_Drainages_Watershed_A_Q13")
+  varNameLinks_2024(8) = Array("Q_ND_14_2024_CF", "Natural_Drainages_Watershed_B_Q14")
+  varNameLinks_2024(9) = Array("Q_ND_14_2024_DF", "Natural_Drainages_Watershed_B_Q14")
+  varNameLinks_2024(10) = Array("Q_ND_15_2024_CF", "Natural_Drainages_Watershed_C_Q15")
+  varNameLinks_2024(11) = Array("Q_ND_15_2024_DF", "Natural_Drainages_Watershed_C_Q15")
+  varNameLinks_2024(12) = Array("Q_ND_16_2024_CF", "Natural_Drainages_Watershed_D_Q16")
+  varNameLinks_2024(13) = Array("Q_ND_16_2024_DF", "Natural_Drainages_Watershed_D_Q16")
+  varNameLinks_2024(14) = Array("Q_ND_17_2024_CF", "Natural_Drainages_Watershed_A_Q17")
+  varNameLinks_2024(15) = Array("Q_ND_17_2024_DF", "Natural_Drainages_Watershed_A_Q17")
+  varNameLinks_2024(16) = Array("Q_ND_18_2024_CF", "Natural_Drainages_Watershed_B_Q18")
+  varNameLinks_2024(17) = Array("Q_ND_18_2024_DF", "Natural_Drainages_Watershed_B_Q18")
+  varNameLinks_2024(18) = Array("Q_ND_19_2024_CF", "Natural_Drainages_Watershed_C_Q19")
+  varNameLinks_2024(19) = Array("Q_ND_19_2024_DF", "Natural_Drainages_Watershed_C_Q19")
+  varNameLinks_2024(20) = Array("Q_ND_1_2024_CF", "Natural_Drainages_Watershed_A_Q1")
+  varNameLinks_2024(21) = Array("Q_ND_1_2024_DF", "Natural_Drainages_Watershed_A_Q1")
+  varNameLinks_2024(22) = Array("Q_ND_20_2024_CF", "Natural_Drainages_Watershed_D_Q20")
+  varNameLinks_2024(23) = Array("Q_ND_20_2024_DF", "Natural_Drainages_Watershed_D_Q20")
+  varNameLinks_2024(24) = Array("Q_ND_21_2024_CF", "Natural_Drainages_Watershed_A_Q21")
+  varNameLinks_2024(25) = Array("Q_ND_21_2024_DF", "Natural_Drainages_Watershed_A_Q21")
+  varNameLinks_2024(26) = Array("Q_ND_22_2024_CF", "Natural_Drainages_Watershed_B_Q22")
+  varNameLinks_2024(27) = Array("Q_ND_22_2024_DF", "Natural_Drainages_Watershed_B_Q22")
+  varNameLinks_2024(28) = Array("Q_ND_23_2024_CF_NO_sp", "Natural_Drainages_Watershed_C_Q23")
+  varNameLinks_2024(29) = Array("Q_ND_23_2024_DF", "Natural_Drainages_Watershed_C_Q23")
+  varNameLinks_2024(30) = Array("Q_ND_24_2024_CF", "Natural_Drainages_Watershed_D_Q24")
+  varNameLinks_2024(31) = Array("Q_ND_24_2024_DF", "Natural_Drainages_Watershed_D_Q24")
+  varNameLinks_2024(32) = Array("Q_ND_2_2024_CF", "Natural_Drainages_Watershed_B_Q2")
+  varNameLinks_2024(33) = Array("Q_ND_2_2024_DF", "Natural_Drainages_Watershed_B_Q2")
+  varNameLinks_2024(34) = Array("Q_ND_3_2024_CF", "Natural_Drainages_Watershed_C_Q3")
+  varNameLinks_2024(35) = Array("Q_ND_3_2024_DF", "Natural_Drainages_Watershed_C_Q3")
+  varNameLinks_2024(36) = Array("Q_ND_4_2024_CF", "Natural_Drainages_Watershed_D_Q4")
+  varNameLinks_2024(37) = Array("Q_ND_4_2024_DF", "Natural_Drainages_Watershed_D_Q4")
+  varNameLinks_2024(38) = Array("Q_ND_5_2024_CF", "Natural_Drainages_Watershed_A_Q5")
+  varNameLinks_2024(39) = Array("Q_ND_5_2024_DF", "Natural_Drainages_Watershed_A_Q5")
+  varNameLinks_2024(40) = Array("Q_ND_6_2024_CF", "Natural_Drainages_Watershed_B_Q6")
+  varNameLinks_2024(41) = Array("Q_ND_6_2024_DF", "Natural_Drainages_Watershed_B_Q6")
+  varNameLinks_2024(42) = Array("Q_ND_7_2024_CF", "Natural_Drainages_Watershed_C_Q7")
+  varNameLinks_2024(43) = Array("Q_ND_7_2024_DF", "Natural_Drainages_Watershed_C_Q7")
+  varNameLinks_2024(44) = Array("Q_ND_8_2024_CF", "Natural_Drainages_Watershed_D_Q8")
+  varNameLinks_2024(45) = Array("Q_ND_8_2024_DF", "Natural_Drainages_Watershed_D_Q8")
+  varNameLinks_2024(46) = Array("Q_ND_9_2024_CF", "Natural_Drainages_Watershed_A_Q9")
+  varNameLinks_2024(47) = Array("Q_ND_9_2024_DF", "Natural_Drainages_Watershed_A_Q9")
+  varNameLinks_2024(48) = Array("Q_P1_11969_2024_CF", "Plot_1_Q11969")
+  varNameLinks_2024(49) = Array("Q_P1_11969_2024_DF", "Plot_1_Q11969")
+  varNameLinks_2024(50) = Array("Q_P1_11972_2024_CF", "Plot_1_Q11972")
+  varNameLinks_2024(51) = Array("Q_P1_11972_2024_DF", "Plot_1_Q11972")
+  varNameLinks_2024(52) = Array("Q_P1_387_2024_CF", "Plot_1_Q387")
+  varNameLinks_2024(53) = Array("Q_P1_387_2024_DF", "Plot_1_Q387")
+  varNameLinks_2024(54) = Array("Q_P1_390_2024_CF", "Plot_1_Q390")
+  varNameLinks_2024(55) = Array("Q_P1_390_2024_DF", "Plot_1_Q390")
+  varNameLinks_2024(56) = Array("Q_P1_39981_2024_CF", "Plot_1_Q39981")
+  varNameLinks_2024(57) = Array("Q_P1_39981_2024_DF", "Plot_1_Q39981")
+  varNameLinks_2024(58) = Array("Q_P2_11962_2024_CF", "Plot_2_Q11962")
+  varNameLinks_2024(59) = Array("Q_P2_11962_2024_DF", "Plot_2_Q11962")
+  varNameLinks_2024(60) = Array("Q_P2_11965_2024_CF", "Plot_2_Q11965")
+  varNameLinks_2024(61) = Array("Q_P2_11965_2024_DF", "Plot_2_Q11965")
+  varNameLinks_2024(62) = Array("Q_P2_33410_2024_CF", "Plot_2_Q33410")
+  varNameLinks_2024(63) = Array("Q_P2_33410_2024_DF", "Plot_2_Q33410")
+  varNameLinks_2024(64) = Array("Q_P3_11974_2024_CF", "Plot_3_Q11974")
+  varNameLinks_2024(65) = Array("Q_P3_11974_2024_DF", "Plot_3_Q11974")
+  varNameLinks_2024(66) = Array("Q_P3_11975_2024_CF", "Plot_3_Q11975")
+  varNameLinks_2024(67) = Array("Q_P3_11975_2024_DF", "Plot_3_Q11975")
+  varNameLinks_2024(68) = Array("Q_P3_11977_2024_CF", "Plot_3_Q11977")
+  varNameLinks_2024(69) = Array("Q_P3_11977_2024_DF", "Plot_3_Q11977")
+  varNameLinks_2024(70) = Array("Q_P3_33401_2024_CF", "Plot_3_Q33401")
+  varNameLinks_2024(71) = Array("Q_P3_33401_2024_DF", "Plot_3_Q33401")
+  varNameLinks_2024(72) = Array("Q_P3_33402_2024_CF", "Plot_3_Q33402")
+  varNameLinks_2024(73) = Array("Q_P3_33402_2024_DF", "Plot_3_Q33402")
+  varNameLinks_2024(74) = Array("Q_P3_33403_2024_CF", "Plot_3_Q33403")
+  varNameLinks_2024(75) = Array("Q_P3_33403_2024_DF", "Plot_3_Q33403")
+  varNameLinks_2024(76) = Array("Q_S_26358_2024_CF", "Summit_Plots_Q26358")
+  varNameLinks_2024(77) = Array("Q_S_26358_2024_DF", "Summit_Plots_Q26358")
+  varNameLinks_2024(78) = Array("Q_S_26361_2024_CF", "Summit_Plots_Q26361")
+  varNameLinks_2024(79) = Array("Q_S_26361_2024_DF", "Summit_Plots_Q26361")
+  varNameLinks_2024(80) = Array("Q_S_27302_2024_CF", "Summit_Plots_Q27302")
+  varNameLinks_2024(81) = Array("Q_S_27302_2024_DF", "Summit_Plots_Q27302")
+  varNameLinks_2024(82) = Array("Q_S_27313_2024_CF", "Summit_Plots_Q27313")
+  varNameLinks_2024(83) = Array("Q_S_27313_2024_DF", "Summit_Plots_Q27313")
+  varNameLinks_2024(84) = Array("Q_S_27332_2024_CF", "Summit_Plots_Q27332")
+  varNameLinks_2024(85) = Array("Q_S_27332_2024_DF", "Summit_Plots_Q27332")
+  varNameLinks_2024(86) = Array("Q_S_27335_2024_CF", "Summit_Plots_Q27335")
+  varNameLinks_2024(87) = Array("Q_S_27335_2024_DF", "Summit_Plots_Q27335")
+  varNameLinks_2024(88) = Array("Q_S_29937_2024_CF", "Summit_Plots_Q29937")
+  varNameLinks_2024(89) = Array("Q_S_29937_2024_DF", "Summit_Plots_Q29937")
+  varNameLinks_2024(90) = Array("Q_S_393_2024_CF", "Summit_Plots_Q393")
+  varNameLinks_2024(91) = Array("Q_S_393_2024_DF", "Summit_Plots_Q393")
+  varNameLinks_2024(92) = Array("Q_S_54_2024_CF", "Summit_Plots_Q54")
+  varNameLinks_2024(93) = Array("Q_S_54_2024_DF", "Summit_Plots_Q54")
+
+  Dim lngIndex As Long
+  Dim varSubArray() As Variant
+  Set pOldTo2024 = New Collection
+  Set p2024toOld = New Collection
+
+  For lngIndex = 0 To UBound(varNameLinks_2024)
+    varSubArray = varNameLinks_2024(lngIndex)
+    If Not MyGeneralOperations.CheckCollectionForKey(pOldTo2024, CStr(varSubArray(1))) Then
+      pOldTo2024.Add varSubArray(0), varSubArray(1)
+    End If
+    p2024toOld.Add varSubArray(1), varSubArray(0)
+  Next lngIndex
+
+End Sub
+
 Public Sub FillNameConverters_2023(varNameLinks_2023() As Variant, p2023toOld As Collection, pOldTo2023 As Collection)
 
   ReDim varNameLinks_2023(93)
@@ -3876,6 +4077,8 @@ Public Sub ConvertPointShapefiles_SA()
   Dim lngConvertIndex As Long
   Dim strCorD As String
 
+  Dim booFoundPointInConversion As Boolean
+
   Dim pQuadrat As IPolygon
   Set pQuadrat = ReturnQuadratPolygon(pSpRef)
   Dim pNewPoly As IPolygon
@@ -4043,7 +4246,7 @@ Public Sub ConvertPointShapefiles_SA()
 
         Debug.Print "  --> Adding Dataset '" & pDataset.BrowseName & "'"
 
-        If strYear = 2021 And strQuadrat = "Q1" Then
+        If strYear = 2022 And strQuadrat = "Q2" Then
           DoEvents
         End If
 
@@ -4209,10 +4412,9 @@ Public Sub ConvertPointShapefiles_SA()
               strSpecies = Replace(strSpecies, "  ", " ", , , vbTextCompare)
             Loop
 
-            If strSpecies = "Muhlenbergia tricholepis" Then
+            If strSpecies = "Menodora scabra" Then
               DoEvents
             End If
-
                 strSpecies, strNoteOnChanges)
 
             If strSpecies = "Lycurus phleoides" Then
@@ -4354,15 +4556,23 @@ Public Sub ConvertPointShapefiles_SA()
                   Set varPoints(0) = pTestPolygon
                 Else
                   varPoints = Margaret_Functions.FillPolygonWithPointArray(pPolygon, 0.005)
+                  booFoundPointInConversion = False
                   For lngConvertIndex = 0 To UBound(varPoints)
                     Set pTestPoint = varPoints(lngConvertIndex)
                     Set pTestPoint.SpatialReference = pSpRef
                     Set pTestPolygon = ReturnCircleClippedToQuadrat(pTestPoint, 0.001, 30, pQuadrat, pPolygon)
                     Set pTestPolygon.SpatialReference = pSpRef
+
                     Set varPoints(lngConvertIndex) = pTestPolygon
                     If Not pTestPolygon.IsEmpty Then
+                      booFoundPointInConversion = True
                     End If
                   Next lngConvertIndex
+                  If Not booFoundPointInConversion Then
+                    DoEvents
+                  Else
+                  End If
+
                 End If
               Else  ' IF STARTING AS DENSITY AND CONVERTING TO COVER; DECIDE IF WE WANT TO MAKE THIS A BIGGER POLYGON
                 ReDim varPoints(0)
@@ -7490,6 +7700,106 @@ Public Function CreateVarSpecialConversions_SA(varQueryConversions() As Variant)
 
   lngMaxIndex = lngMaxIndex + 1
   ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q24"
+  varQueryConversions(1, lngMaxIndex) = 2022
+  varQueryConversions(2, lngMaxIndex) = "Gutierrezia sarothrae"
+  varQueryConversions(3, lngMaxIndex) = "Gutierrezia sarothrae"
+  varQueryConversions(4, lngMaxIndex) = Array("""Species"" = 'Gutierrezia sarothrae'", """species"" = ''")
+  varQueryConversions(5, lngMaxIndex) = "Sierra_Ancha_1934_2024_PDF v3_Review_MMM_Dec20.xlsx"
+  varQueryConversions(6, lngMaxIndex) = Array("Return Centroid", "Skip")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q22"
+  varQueryConversions(1, lngMaxIndex) = 2017
+  varQueryConversions(2, lngMaxIndex) = "Echinocereus engelmannii"
+  varQueryConversions(3, lngMaxIndex) = "Echinocereus engelmannii"
+  varQueryConversions(4, lngMaxIndex) = Array("""Species"" = 'Echinocereus engelmannii'", """species"" = ''")
+  varQueryConversions(5, lngMaxIndex) = "Sierra_Ancha_1934_2024_PDF v3_Review_MMM_Dec20.xlsx"
+  varQueryConversions(6, lngMaxIndex) = Array("Return Centroid", "Skip")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q21"
+  varQueryConversions(1, lngMaxIndex) = 2022
+  varQueryConversions(2, lngMaxIndex) = "Menodora scabra"
+  varQueryConversions(3, lngMaxIndex) = "Menodora scabra"
+  varQueryConversions(4, lngMaxIndex) = Array("""Species"" = 'Menodora scabra'", """species"" = ''")
+  varQueryConversions(5, lngMaxIndex) = "Sierra_Ancha_1934_2024_PDF v3_Review_MMM_Dec20.xlsx"
+  varQueryConversions(6, lngMaxIndex) = Array("Return Centroid", "Skip")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q14"
+  varQueryConversions(1, lngMaxIndex) = 2018
+  varQueryConversions(2, lngMaxIndex) = "Bouteloua curtipendula"
+  varQueryConversions(3, lngMaxIndex) = "Aristida purpurea"
+  varQueryConversions(4, lngMaxIndex) = Array("""FID"" IN (28) AND ""species"" = 'Bouteloua curtipendula'", """FID"" = -999")
+  varQueryConversions(5, lngMaxIndex) = "Sierra_Ancha_1934_2024_PDF v3_Review_MMM_Dec20.xlsx"
+  varQueryConversions(6, lngMaxIndex) = Array("Change Species", "Skip")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q7"
+  varQueryConversions(1, lngMaxIndex) = 2020
+  varQueryConversions(2, lngMaxIndex) = "Bouteloua hirsuta"
+  varQueryConversions(3, lngMaxIndex) = "Bouteloua curtipendula"
+  varQueryConversions(4, lngMaxIndex) = Array("""FID"" IN (12) AND ""species"" = 'Bouteloua hirsuta'", """FID"" = -999")
+  varQueryConversions(5, lngMaxIndex) = "Sierra_Ancha_1934_2024_PDF v3_Review_MMM_Dec20.xlsx"
+  varQueryConversions(6, lngMaxIndex) = Array("Change Species", "Skip")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q4"
+  varQueryConversions(1, lngMaxIndex) = 2021
+  varQueryConversions(2, lngMaxIndex) = "Bouteloua hirsuta"
+  varQueryConversions(3, lngMaxIndex) = "Bouteloua hirsuta"
+  varQueryConversions(4, lngMaxIndex) = Array("Natural_Drainages_Watershed_D_Q4_2022_C|""species"" = 'Bouteloua hirsuta'", """FID"" = -999")
+  varQueryConversions(5, lngMaxIndex) = "Sierra_Ancha_1934_2024_PDF v3_Review_MMM_Dec20.xlsx"
+  varQueryConversions(6, lngMaxIndex) = Array("Copy Features", "Skip")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q2"
+  varQueryConversions(1, lngMaxIndex) = 2022
+  varQueryConversions(2, lngMaxIndex) = "Menodora scabra"
+  varQueryConversions(3, lngMaxIndex) = "Menodora scabra"
+  varQueryConversions(4, lngMaxIndex) = Array("""Species"" = 'Menodora scabra'", """species"" = ''")
+  varQueryConversions(5, lngMaxIndex) = "Sierra_Ancha_1934_2024_PDF v3_Review_MMM_Dec20.xlsx"
+  varQueryConversions(6, lngMaxIndex) = Array("Return Centroid", "Skip")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q1"
+  varQueryConversions(1, lngMaxIndex) = 2021
+  varQueryConversions(2, lngMaxIndex) = "Bouteloua hirsuta"
+  varQueryConversions(3, lngMaxIndex) = "Bouteloua hirsuta"
+  varQueryConversions(4, lngMaxIndex) = Array("Natural_Drainages_Watershed_A_Q1_2022_C|""species"" = 'Bouteloua hirsuta'", """FID"" = -999")
+  varQueryConversions(5, lngMaxIndex) = "Sierra_Ancha_1934_2024_PDF v3_Review_MMM_Dec20.xlsx"
+  varQueryConversions(6, lngMaxIndex) = Array("Copy Features", "Skip")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q1"
+  varQueryConversions(1, lngMaxIndex) = 2019
+  varQueryConversions(2, lngMaxIndex) = "Bouteloua hirsuta"
+  varQueryConversions(3, lngMaxIndex) = "Bouteloua curtipendula"
+  varQueryConversions(4, lngMaxIndex) = Array("""FID"" IN (4,5,8,9,10,11) AND ""species"" = 'Bouteloua hirsuta'", """FID"" = -999")
+  varQueryConversions(5, lngMaxIndex) = "Sierra_Ancha_1934_2024_PDF v3_Review_MMM_Dec20.xlsx"
+  varQueryConversions(6, lngMaxIndex) = Array("Change Species", "Skip")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q1"
+  varQueryConversions(1, lngMaxIndex) = 2020
+  varQueryConversions(2, lngMaxIndex) = "Bouteloua hirsuta"
+  varQueryConversions(3, lngMaxIndex) = "Bouteloua curtipendula"
+  varQueryConversions(4, lngMaxIndex) = Array("""FID"" IN (2,3,4,5) AND ""species"" = 'Bouteloua hirsuta'", """FID"" = -999")
+  varQueryConversions(5, lngMaxIndex) = "Sierra_Ancha_1934_2024_PDF v3_Review_MMM_Dec20.xlsx"
+  varQueryConversions(6, lngMaxIndex) = Array("Change Species", "Skip")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
   varQueryConversions(0, lngMaxIndex) = "Q6"
   varQueryConversions(1, lngMaxIndex) = 2019
   varQueryConversions(2, lngMaxIndex) = " "
@@ -7607,6 +7917,46 @@ Public Function CreateVarSpecialConversions_SA(varQueryConversions() As Variant)
   varQueryConversions(4, lngMaxIndex) = Array("""Species"" = 'Rock'", """species"" = ' '")
   varQueryConversions(5, lngMaxIndex) = "Initial Corrections; August, 2021"
   varQueryConversions(6, lngMaxIndex) = Array("Delete", "Skip")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q9"
+  varQueryConversions(1, lngMaxIndex) = 2024
+  varQueryConversions(2, lngMaxIndex) = "Abutilon palmeri"
+  varQueryConversions(3, lngMaxIndex) = "Abutilon parvulum"
+  varQueryConversions(4, lngMaxIndex) = Array("", """species"" = 'Abutilon palmeri'")
+  varQueryConversions(5, lngMaxIndex) = "From Margaret Moore, Nov. 5 2024"
+  varQueryConversions(6, lngMaxIndex) = Array("Skip", "Change Species")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q15"
+  varQueryConversions(1, lngMaxIndex) = 2024
+  varQueryConversions(2, lngMaxIndex) = "Ephedra trifurca"
+  varQueryConversions(3, lngMaxIndex) = "Ephedra viridis"
+  varQueryConversions(4, lngMaxIndex) = Array("", """species"" = 'Ephedra trifurca'")
+  varQueryConversions(5, lngMaxIndex) = "From Margaret Moore, Nov. 5 2024"
+  varQueryConversions(6, lngMaxIndex) = Array("Skip", "Change Species")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q18"
+  varQueryConversions(1, lngMaxIndex) = 2024
+  varQueryConversions(2, lngMaxIndex) = "Ephedra trifurca"
+  varQueryConversions(3, lngMaxIndex) = "Ephedra viridis"
+  varQueryConversions(4, lngMaxIndex) = Array("", """species"" = 'Ephedra trifurca'")
+  varQueryConversions(5, lngMaxIndex) = "From Margaret Moore, Nov. 5 2024"
+  varQueryConversions(6, lngMaxIndex) = Array("Skip", "Change Species")
+
+  lngMaxIndex = lngMaxIndex + 1
+  ReDim Preserve varQueryConversions(6, lngMaxIndex)
+  varQueryConversions(0, lngMaxIndex) = "Q5"
+  varQueryConversions(1, lngMaxIndex) = 2024
+  varQueryConversions(2, lngMaxIndex) = "Helio sp."
+  varQueryConversions(3, lngMaxIndex) = "Heliomeris longifolia"
+  varQueryConversions(4, lngMaxIndex) = Array("", """species"" = 'Helio sp.'")
+  varQueryConversions(5, lngMaxIndex) = "From Margaret Moore, Nov. 5 2024"
+  varQueryConversions(6, lngMaxIndex) = Array("Skip", "Change Species")
 
   lngMaxIndex = lngMaxIndex + 1
   ReDim Preserve varQueryConversions(6, lngMaxIndex)

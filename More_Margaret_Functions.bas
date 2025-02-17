@@ -488,7 +488,7 @@ Public Sub FillMetadataItems(strAbstract As String, strBaseString As String, str
   strBaseString = strBaseString & " " & vbNewLine
 
   strAbstract = "This dataset consists of 33 permanent 1-m2 quadrats located near Sierra Ancha, Arizona, USA.  Individual plants in " & _
-      "these quadrats were identified and mapped in 1935, 1936, 1940, 1941, 1942, 1952, and 1955, and then annually from 2017-2020.  " & _
+      "these quadrats were identified and mapped in 1935, 1936, 1940, 1941, 1942, 1952, and 1955, and then annually from 2017-2024.  " & _
       "The temporal and spatial data provide " & _
       "unique opportunities to examine the effects of climate and " & _
       "land-use variables on plant demography, population and community processes.  We provide the following data and data formats: (1) the digitized maps in shapefile and file geodatabase format; (2) a " & _
@@ -501,7 +501,7 @@ Public Sub FillMetadataItems(strAbstract As String, strBaseString As String, str
       "to facilitate analysis in R using Integral Projection Model (IPM) methods." & vbCrLf & vbCrLf & strBaseString
 
   strPurpose = "An analysis of cover and density of southwestern plants mapped multiple times " & _
-      "between 1935 and 2020 in permanent quadrats."
+      "between 1935 and 2024 in permanent quadrats."
 
 End Sub
 
@@ -1303,7 +1303,7 @@ Public Sub SummarizeSpeciesByCorrectQuadrat_SA()
   For lngIndex = 0 To UBound(strAllSpecies)
 
     strSpecies = Trim(strAllSpecies(lngIndex))
-    If strSpecies = "" Then
+    If strSpecies = "" Or strSpecies = "<-- Species Name Missing -->" Then
       strLine = """<Null>"",""<Null>"",""<Null>"",""<Null>"",""<Null>"",""<Null>"",""<Null>"",""<Null>"","
     Else
       varVegArray = pVegColl.Item(strSpecies)
@@ -1558,7 +1558,7 @@ Public Sub SummarizeSpeciesBySite_SA()
 
   For lngIndex = 0 To UBound(strAllSpecies)
     strSpecies = Trim(strAllSpecies(lngIndex))
-    If strSpecies = "" Then
+    If strSpecies = "" Or strSpecies = "<-- Species Name Missing -->" Then
       strLine = """<Null>"",""<Null>"",""<Null>"",""<Null>"",""<Null>"",""<Null>"",""<Null>"",""<Null>"","
     Else
       varVegArray = pVegColl.Item(strSpecies)
@@ -1688,6 +1688,10 @@ Public Sub SummarizeYearByCorrectQuadratByYear_SA()
     End If
     strYear = Trim(pFeature.Value(lngDensityYearIndex))
     If strYear = "" Then strYear = "<-- Year Name Missing -->"
+    If strYear = "1940" Or strYear = "1941" Then
+      strYear = "1940 - 1941"
+    End If
+
     If Not MyGeneralOperations.CheckCollectionForKey(pDoneYear, strYear) Then
       pDoneYear.Add True, strYear
       lngAllYearIndex = lngAllYearIndex + 1
@@ -1716,6 +1720,9 @@ Public Sub SummarizeYearByCorrectQuadratByYear_SA()
     End If
     strYear = Trim(pFeature.Value(lngCoverYearIndex))
     If strYear = "" Then strYear = "<-- Year Name Missing -->"
+    If strYear = "1940" Or strYear = "1941" Then
+      strYear = "1940 - 1941"
+    End If
     If Not MyGeneralOperations.CheckCollectionForKey(pDoneYear, strYear) Then
       pDoneYear.Add True, strYear
       lngAllYearIndex = lngAllYearIndex + 1
@@ -1766,6 +1773,9 @@ Public Sub SummarizeYearByCorrectQuadratByYear_SA()
     End If
     strYear = Trim(pFeature.Value(lngDensityYearIndex))
     If strYear = "" Then strYear = "<-- Year Name Missing -->"
+    If strYear = "1940" Or strYear = "1941" Then
+      strYear = "1940 - 1941"
+    End If
     lngYearIndex = pYearIndexes.Item(strYear)
 
     strSite = pFeature.Value(lngDensitySiteIndex) & ": Quadrat " & pFeature.Value(lngDensityPlotIndex)
@@ -1786,6 +1796,9 @@ Public Sub SummarizeYearByCorrectQuadratByYear_SA()
     End If
     strYear = Trim(pFeature.Value(lngCoverYearIndex))
     If strYear = "" Then strYear = "<-- Year Name Missing -->"
+    If strYear = "1940" Or strYear = "1941" Then
+      strYear = "1940 - 1941"
+    End If
     lngYearIndex = pYearIndexes.Item(strYear)
 
     strSite = pFeature.Value(lngCoverSiteIndex) & ": Quadrat " & pFeature.Value(lngCoverPlotIndex)

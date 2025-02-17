@@ -415,6 +415,122 @@ ClearMemory:
 
 End Function
 
+Public Function UnionGeometries4(pGeomArray As esriSystem.IVariantArray, _
+    Optional lngMaxNumberToUnion As Long = -999) As IGeometry
+
+  Dim pTopoOp As ITopologicalOperator
+  Dim pGeom As IGeometry
+  Dim pGeometryCollection As IGeometryCollection
+
+  Set pGeometryCollection = New GeometryBag
+
+  Dim pSpRef As ISpatialReference
+  Dim pTempGeom As IGeometry
+  Dim pNewGeom As IGeometry
+  Dim lngIndex As Long
+  Dim booFoundGeometry As Boolean
+
+  Do Until lngIndex = pGeomArray.Count Or Not pSpRef Is Nothing
+    Set pGeom = pGeomArray.Element(0)
+    If Not pGeom Is Nothing Then
+      Set pSpRef = pGeom.SpatialReference
+      booFoundGeometry = True
+    End If
+    lngIndex = lngIndex + 1
+  Loop
+
+  Dim lngGeomType As esriGeometryType
+  lngGeomType = pGeom.GeometryType
+
+  Dim pTempPoly As IPolygon
+  Dim pNewPoly As IPolygon
+  Dim pSimplifyTopoOp As ITopologicalOperator4
+
+  If Not booFoundGeometry Then
+    Set UnionGeometries4 = Nothing
+  Else
+    For lngIndex = 0 To pGeomArray.Count - 1
+      Set pGeom = pGeomArray.Element(lngIndex)
+
+      If Not pGeom Is Nothing Then
+        If Not pGeom.IsEmpty Then
+          Set pSimplifyTopoOp = pGeom
+          pSimplifyTopoOp.IsKnownSimple = False
+          pSimplifyTopoOp.Simplify
+
+          pGeometryCollection.AddGeometry pGeom
+
+          If lngMaxNumberToUnion > 1 Then
+            If pGeometryCollection.GeometryCount >= lngMaxNumberToUnion Then
+
+              If lngGeomType = esriGeometryPoint Then
+                Set pTempGeom = New Multipoint
+              ElseIf lngGeomType = esriGeometryMultipoint Then
+                Set pTempGeom = New Multipoint
+              ElseIf lngGeomType = esriGeometryPolyline Then
+                Set pTempGeom = New Polyline
+              ElseIf lngGeomType = esriGeometryPolygon Then
+                Set pTempGeom = New Polygon
+              End If
+
+              Set pTopoOp = pTempGeom
+              pTopoOp.ConstructUnion pGeometryCollection
+              pTopoOp.Simplify
+
+              Set pTempGeom.SpatialReference = pSpRef
+              Set pGeometryCollection = New GeometryBag
+              pGeometryCollection.AddGeometry pTempGeom
+
+            End If
+          End If
+        End If
+      End If
+
+    Next lngIndex
+
+    If pGeometryCollection.GeometryCount = 1 Then
+      Set pNewGeom = pGeometryCollection.Geometry(0)
+
+    Else
+      If lngGeomType = esriGeometryPoint Then
+        Set pNewGeom = New Multipoint
+      ElseIf lngGeomType = esriGeometryMultipoint Then
+        Set pNewGeom = New Multipoint
+      ElseIf lngGeomType = esriGeometryPolyline Then
+        Set pNewGeom = New Polyline
+      ElseIf lngGeomType = esriGeometryPolygon Then
+        Set pNewGeom = New Polygon
+      End If
+
+      Set pTopoOp = pNewGeom
+      pTopoOp.ConstructUnion pGeometryCollection
+      pTopoOp.Simplify
+
+      Set pNewGeom.SpatialReference = pSpRef
+    End If
+
+    Set UnionGeometries4 = pNewGeom
+  End If
+
+  Set pTopoOp = Nothing
+  Set pGeom = Nothing
+  Set pGeometryCollection = Nothing
+  Set pSpRef = Nothing
+  Set pNewGeom = Nothing
+  Set pTempGeom = Nothing
+
+  GoTo ClearMemory
+ClearMemory:
+
+  Set pTopoOp = Nothing
+  Set pGeom = Nothing
+  Set pGeometryCollection = Nothing
+  Set pSpRef = Nothing
+  Set pNewGeom = Nothing
+  Set pTempGeom = Nothing
+
+End Function
+
 Public Function ReturnPolygonRingsAsDoubleArray(pPolygon As IPolygon) As Variant()
 
   Dim varReturn() As Variant
