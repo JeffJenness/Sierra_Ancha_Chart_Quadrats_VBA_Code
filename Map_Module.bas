@@ -1,10 +1,7 @@
 Attribute VB_Name = "Map_Module"
 Option Explicit
 
-Public Function ExportActiveView(strFilename As String, Optional booAsTIFF As Boolean, _
-    Optional booPDF As Boolean = False) As Boolean
-
-  strFilename = Replace(strFilename, " / ", "_")
+Public Function ExportActiveView(strFilename As String) As Boolean
 
   Dim pApp As IApplication
   Dim pMxDoc As IMxDocument
@@ -38,33 +35,13 @@ Public Function ExportActiveView(strFilename As String, Optional booAsTIFF As Bo
   Dim pUnitConvertor As IUnitConverter
 
   Dim pExportPNG As IExportPNG
-  Dim pExportTIFF As IExportTIFF
-  Dim pExportPDF3 As IExportPDF3
-  Dim pExportPDF2 As IExportPDF2
 
   Set pActiveView = pMxDoc.ActiveView
   Set pTrackCancel = New CancelTracker
 
-  If booPDF Then
-    strFilename = aml_func_mod.SetExtension(strFilename, "pdf")
-    Set pExport = New ExportPDF
-    Set pExportPDF3 = pExport
-    Set pExportPDF2 = pExport
-    pExportPDF3.JPEGCompressionQuality = 100
-    pExportPDF2.ExportPDFLayersAndFeatureAttributes = esriExportPDFLayerOptionsNone
-  Else
-    If booAsTIFF Then
-      strFilename = aml_func_mod.SetExtension(strFilename, "tif")
-      Set pExport = New ExportTIFF
-      Set pExportTIFF = pExport
-      pExportTIFF.CompressionType = esriTIFFCompressionLZW
-      pExportTIFF.JPEGOrDeflateQuality = 100
-    Else
-      strFilename = aml_func_mod.SetExtension(strFilename, "png")
-      Set pExport = New ExportPNG
-    End If
-  End If
-  iOutputResolution = 600
+  Set pExport = New ExportPNG
+
+  iOutputResolution = 400
   bClipToGraphicsExtent = False
 
   Set pOutputRasterSettings = pActiveView.ScreenDisplay.DisplayTransformation

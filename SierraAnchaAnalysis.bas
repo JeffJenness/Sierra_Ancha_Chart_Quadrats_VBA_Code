@@ -5009,7 +5009,7 @@ Public Sub AddEmptyFeaturesAndFeatureClassesToCleaned_SA()
   Call MyGeneralOperations.ReturnQuerySpecialCharacters(pNewFGDBWS, strGDBPrefix, strGDBSuffix)
 
   lngStartYear = 1935
-  lngEndYear = 2020
+  lngEndYear = 2028
   Dim pSitesSurveyedByYearColl As Collection
   Set pSitesSurveyedByYearColl = More_Margaret_Functions.ReturnCollectionOfYearsSurveyedByQuadrat(lngStartYear, lngEndYear)
   Set pQueryFilt = New QueryFilter
@@ -5418,7 +5418,7 @@ Public Sub AddEmptyFeaturesAndFeatureClasses_SA(Optional booDoRecreated As Boole
   Call MyGeneralOperations.ReturnQuerySpecialCharacters(pNewFGDBWS, strGDBPrefix, strGDBSuffix)
 
   lngStartYear = 1935
-  lngEndYear = 2020
+  lngEndYear = 2028
   Dim pSitesSurveyedByYearColl As Collection
   Set pSitesSurveyedByYearColl = More_Margaret_Functions.ReturnCollectionOfYearsSurveyedByQuadrat(lngStartYear, lngEndYear)
   Set pQueryFilt = New QueryFilter

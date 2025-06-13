@@ -3,9 +3,6 @@ Option Explicit
 
 Public Sub GenerateRData()
 
-  Dim lngStart As Long
-  lngStart = GetTickCount
-
   Dim pMxDoc As IMxDocument
   Dim pApp As IApplication
   Dim pSBar As IStatusBar
@@ -15,15 +12,6 @@ Public Sub GenerateRData()
   Set pApp = Application
   Set pSBar = pApp.StatusBar
   Set pProg = pSBar.ProgressBar
-
-  Dim lngCount As Long
-  Dim lngCounter As Long
-
-  Dim strOrigRoot As String
-  Dim strModRoot As String
-  Dim strShiftRoot As String
-  Dim strFinalFolder As String
-  Call DeclareWorkspaces(strOrigRoot, , strShiftRoot, , strModRoot, , , strFinalFolder)
 
   Dim pCoverFClass As IFeatureClass
   Dim pDensityFClass As IFeatureClass
