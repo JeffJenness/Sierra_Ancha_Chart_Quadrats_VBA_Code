@@ -1,7 +1,7 @@
 # Sierra_Ancha_Chart_Quadrats_VBA_Code
 This repository contains VBA and ArcObjects code used to analyze plant distributions in digitized quadrats near Sierra Ancha Arizona, intermittently over the years 1935 - 1955, and then yearly from 2017 - 2024. This code was used to produce the original data presented in the Data Paper "Cover and density of semi-arid desert grassland plants within interior chaparral in permanent chart quadrats: 1935-2024" (Moore et al. 2025; see also https://doi.org/10.2737/RDS-2024-0053).
 
-The full set of code used in this project inclues 232 VBA/ArcObjects functions distributed over 13 modules (22,912 lines of code).  The primary analytical master function is "RunAsBatch" in the module "SierraAnchaAnalysis". This function runs several other functions that do the various steps of the analysis.  In particular:
+The full set of code used in this project inclues 237 VBA/ArcObjects functions distributed over 13 modules (23,218 lines of code).  The primary analytical master function is "RunAsBatch" in the module "SierraAnchaAnalysis". This function runs several other functions that do the various steps of the analysis.  In particular:
 
 1) The function "OrganizeData_SA" in module "SierraAnchaAnalysis" assembles all original datasets into a single workspace with a common naming convention, and adds verbatim fields to keep track of edits made to data.
 2) The function "ReviseShapefiles_SA" in module "SierraAnchaAnalysis" corrects species misspellings and misidentifications.
