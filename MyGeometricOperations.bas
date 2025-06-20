@@ -7,6 +7,26 @@ Public Function DegToRad(dblDeg As Double) As Double
 
 End Function
 
+Public Function atan2(dblDeltaY As Double, dblDeltaX As Double) As Double
+
+  If dblDeltaX > 0 Then
+    atan2 = Atn(dblDeltaY / dblDeltaX)
+  ElseIf dblDeltaX < 0 Then
+    If dblDeltaY = 0 Then
+      atan2 = dblPI
+    Else
+      atan2 = Sgn(dblDeltaY) * (dblPI - Atn(Abs(dblDeltaY / dblDeltaX)))
+    End If
+  Else    ' IF dblDeltaX  = 0
+    If dblDeltaY = 0 Then
+      atan2 = 0
+    Else
+      atan2 = Sgn(dblDeltaY) * dblPI / 2
+    End If
+  End If
+
+End Function
+
 Public Function EnvelopeToPolygon(pEnv As IEnvelope) As IPolygon
 
   Dim pPtColl As IPointCollection
@@ -34,6 +54,12 @@ End Function
 Public Function AsRadians(theDegrees As Double) As Double
 
   AsRadians = dblPI * (theDegrees / 180)
+
+End Function
+
+Public Function AsDegrees(theRadians As Double) As Double
+
+  AsDegrees = (theRadians * 180) / dblPI
 
 End Function
 
@@ -156,6 +182,106 @@ Public Function CreateCircleAroundPoint(pOrigin As IPoint, dblRadius As Double, 
   Set CreateCircleAroundPoint = pFinal
 
 End Function
+
+Public Function ReturnWeightedMeanDir2(dblCompassDirs() As Double, Optional dblMeanResultLength As Double, _
+    Optional dblCircularVariance As Double, Optional dblAngularVariance As Double, _
+    Optional dblCircularStandDev As Double, Optional dblAngularDeviation As Double, _
+    Optional dblResultantLength As Double, Optional dblKappa As Double) As Double
+
+  Dim dblSumC As Double
+  Dim dblSums As Double
+  Dim lngIndex As Long
+  Dim dblRadians As Double
+  Dim dblWeight As Double
+  Dim dblSumWeights As Double
+
+  For lngIndex = 0 To UBound(dblCompassDirs, 2)
+
+    dblRadians = AsRadians(dblCompassDirs(0, lngIndex))
+    dblWeight = dblCompassDirs(1, lngIndex)
+    dblSumC = dblSumC + (Cos(dblRadians) * dblWeight)
+    dblSums = dblSums + (Sin(dblRadians) * dblWeight)
+    dblSumWeights = dblSumWeights + dblWeight
+  Next lngIndex
+
+  Dim dblMeanDir As Double
+  If Abs(dblSumC) < 0.00000001 And Abs(dblSums) < 0.00000001 Then
+    dblMeanDir = -9999
+  Else
+    dblMeanDir = atan2(dblSums, dblSumC)
+    dblMeanDir = AsDegrees(dblMeanDir)
+
+    ForceAzimuthToCorrectRange dblMeanDir
+
+    If dblMeanDir < 0 Then
+      dblMeanDir = dblMeanDir + 360
+    End If
+  End If
+  ReturnWeightedMeanDir2 = dblMeanDir
+
+  dblResultantLength = Sqr(dblSumC ^ 2 + dblSums ^ 2)
+  dblMeanResultLength = dblResultantLength / dblSumWeights
+  If dblMeanResultLength > 1 Then dblMeanResultLength = 1   ' ROUNDING ERROR CAN CAUSE THIS TO BE > 1 WHEN THERE IS NO VARIANCE
+  dblCircularVariance = 1 - dblMeanResultLength
+  dblAngularVariance = 2 * dblCircularVariance
+  dblCircularStandDev = Sqr(-2 * (Log(dblMeanResultLength)))
+  dblAngularDeviation = Sqr(dblAngularVariance)
+
+  Dim lngPointCount As Long
+  lngPointCount = UBound(dblCompassDirs, 2) + 1
+  dblKappa = ReturnVonMisesKappa(dblMeanResultLength, lngPointCount, True)
+
+End Function
+
+Public Function ReturnVonMisesKappa(dblMeanResultLength As Double, lngPointCount As Long, booCorrectIfSmallSample As Boolean) As Double
+
+  Dim dblKappa As Double
+  If dblMeanResultLength < 0.53 Then
+    dblKappa = (2 * dblMeanResultLength) + (dblMeanResultLength ^ 3) + (5 * (dblMeanResultLength ^ 5) / 6)
+  ElseIf dblMeanResultLength < 0.85 Then
+    dblKappa = -0.4 + (1.39 * dblMeanResultLength) + (0.43 / (1 - dblMeanResultLength))
+  Else
+    If ((dblMeanResultLength ^ 3) - (4 * (dblMeanResultLength ^ 2)) + (3 * dblMeanResultLength)) = 0 Then
+      dblKappa = 1 / 0.000000001
+    Else
+      dblKappa = 1 / ((dblMeanResultLength ^ 3) - (4 * (dblMeanResultLength ^ 2)) + (3 * dblMeanResultLength))
+    End If
+  End If
+
+  If lngPointCount <= 15 And booCorrectIfSmallSample Then
+    If dblKappa < 2 Then
+      Dim dblTemp As Double
+      dblTemp = dblKappa - (2 / (lngPointCount * dblKappa))
+      If dblTemp < 0 Then
+        dblKappa = 0
+      Else
+        dblKappa = dblTemp
+      End If
+    Else
+      dblKappa = ((lngPointCount - 1) ^ 3) * dblKappa / (lngPointCount ^ 3 + lngPointCount)
+    End If
+  End If
+  ReturnVonMisesKappa = dblKappa
+
+End Function
+
+Public Sub ForceAzimuthToCorrectRange(ByRef dblAz As Double)
+
+  If dblAz < 0 Then
+    Do Until dblAz > 0
+      dblAz = dblAz + 360
+    Loop
+  End If
+
+  If dblAz > 360 Then
+    Do Until dblAz < 360
+      dblAz = dblAz - 360
+    Loop
+  End If
+
+  If dblAz = 360 Then dblAz = 0
+
+End Sub
 
 Public Function SquaredDistanceBetweenSegments( _
     dblSeg1Start() As Double, _

@@ -3,6 +3,9 @@ Option Explicit
 
 Public Sub GenerateRData()
 
+  Dim lngStart As Long
+  lngStart = GetTickCount
+
   Dim pMxDoc As IMxDocument
   Dim pApp As IApplication
   Dim pSBar As IStatusBar
@@ -17,6 +20,7 @@ Public Sub GenerateRData()
   Dim pDensityFClass As IFeatureClass
   Dim pVegColl As Collection
   Dim pRefColl As Collection
+  Dim strFinalFolder As String
 
   Set pRefColl = SierraAnchaAnalysis.ReturnSpeciesTypeColl(pCoverFClass, pDensityFClass, pVegColl, , strFinalFolder)
 
@@ -69,6 +73,7 @@ Public Sub GenerateRData()
   lngCoverYearIndex = pCoverFClass.FindField("Year")
   lngCoverAreaIndex = pCoverFClass.FindField("Shape_Area")
 
+  Dim lngCount As Long
   lngCount = pDensityFClass.FeatureCount(Nothing) + pCoverFClass.FeatureCount(Nothing)
 
   Dim strSpecies As String
@@ -101,6 +106,7 @@ Public Sub GenerateRData()
   pProg.position = 0
 
   Dim strKey As String
+  Dim lngCounter As Long
 
   lngCounter = 0
 

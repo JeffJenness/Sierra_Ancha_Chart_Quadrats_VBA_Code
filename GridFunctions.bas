@@ -177,113 +177,6 @@ Private Function IsCellNaN(expression As Variant) As Boolean
 
 End Function
 
-Public Function CellValue2(pPoint As IPoint, pRaster As IRaster, _
-        Optional lngBandIndex As Long = 0) As Variant
-
-    Dim pRP As IRasterProps
-    Set pRP = pRaster
-
-    Dim dblCellSizeX As Double
-    Dim dblCellSizeY As Double
-    dblCellSizeX = ReturnPixelWidth(pRaster)
-    dblCellSizeY = ReturnPixelHeight(pRaster)
-
-    Dim dblHalfCellX As Double
-    dblHalfCellX = dblCellSizeX / 2
-    Dim dblHalfCellY As Double
-    dblHalfCellY = dblCellSizeY / 2
-
-    Dim pExtent As IEnvelope
-    Set pExtent = pRP.Extent
-    Dim X1 As Double, Y1 As Double, X2 As Double, Y2 As Double
-    pExtent.QueryCoords X1, Y1, X2, Y2
-
-    Dim pPB As IPixelBlock3
-
-    Dim dWidth As Double, dHeight As Double
-    dWidth = pRP.Width
-    dHeight = pRP.Height
-
-    Dim pPnt As IPnt
-    Set pPnt = New Pnt
-    pPnt.SetCoords 1, 1
-    Set pPB = pRaster.CreatePixelBlock(pPnt)
-
-    Dim pOrigin As IPnt
-
-    Dim lngIndex As Long
-    Dim dblCellValue As Double
-    Dim dx As Double, dy As Double
-    Dim nX As Double, ny As Double
-    Dim dblXRemainder As Double, dblYRemainder As Double
-    Dim iX As Long, iY As Long
-    Dim lngMaxX As Long, lngMaxY As Long
-
-    lngMaxX = pRP.Width - 1
-    lngMaxY = pRP.Height - 1
-
-    Dim dblPropX As Double
-    Dim dblPropY As Double
-
-    Dim pOutArray As esriSystem.IVariantArray
-    Set pOutArray = New esriSystem.varArray
-
-    Set pOrigin = New Pnt
-
-    Dim vCellValue As Variant
-    Dim booIsNull As Boolean
-
-    If pPoint.x < X1 Or pPoint.x > X2 Or pPoint.Y < Y1 Or pPoint.Y > Y2 Then
-      CellValue2 = Null
-    Else
-
-      dx = pPoint.x - X1
-      dy = Y2 - pPoint.Y
-
-      nX = dx / dblCellSizeX
-      ny = dy / dblCellSizeY
-
-      iX = Int(nX)
-      iY = Int(ny)
-
-      If (iX < 0) Then iX = 0
-      If (iY < 0) Then iY = 0
-      If (iX > lngMaxX) Then
-        iX = lngMaxX
-      End If
-      If (iY > lngMaxY - 1) Then
-        iY = lngMaxY - 1
-      End If
-
-      booIsNull = False
-
-      If iX = lngMaxX Or iY = 0 Then
-        booIsNull = True
-      Else
-        pOrigin.SetCoords iX, iY
-        pRaster.Read pOrigin, pPB
-        vCellValue = pPB.GetVal(lngBandIndex, 0, 0)
-        If IsCellNaN(vCellValue) Or IsEmpty(vCellValue) Then
-          booIsNull = True
-        End If
-      End If
-
-      If booIsNull Then
-        CellValue2 = Null
-      Else
-        CellValue2 = CDbl(vCellValue)
-      End If
-    End If
-
-  Set pRP = Nothing
-  Set pExtent = Nothing
-  Set pPB = Nothing
-  Set pPnt = Nothing
-  Set pOrigin = Nothing
-  Set pOutArray = Nothing
-
-End Function
-
 Public Function CellValue4CellInterp(pPoint As IPoint, pRaster As IRaster, _
     Optional lngBandIndex As Long = 0) As Variant
 
@@ -483,6 +376,281 @@ Public Function CellValue4CellInterp(pPoint As IPoint, pRaster As IRaster, _
         CellValue4CellInterp = Null
       Else
         CellValue4CellInterp = CDbl(varInterpVal)
+      End If
+
+        "   dblPropX = " & CStr(dblPropX) & vbCrLf & _
+        "   dblPropY = " & CStr(dblPropY) & vbCrLf & _
+        "   Quadrant = " & CStr(bytQuadrant) & vbCrLf & _
+        "   vCellValueNW = " & CStr(vCellValueNW) & vbCrLf & _
+        "   vCellValueNE = " & CStr(vCellValueNE) & vbCrLf & _
+        "   vCellValueSW = " & CStr(vCellValueSW) & vbCrLf & _
+        "   vCellValueSE = " & CStr(vCellValueSE) & vbCrLf & _
+        "   dblWestProp = " & CStr(dblWestProp) & vbCrLf & _
+        "   dblEastProp = " & CStr(dblEastProp) & vbCrLf & _
+        "   Interpolated Value = " & CStr(varInterpVal)
+    End If
+
+ClearMemory:
+  Set pRP = Nothing
+  Set pExtent = Nothing
+  Set pPB = Nothing
+  Set pPnt = Nothing
+  Set pOrigin = Nothing
+  varInterpVal = Null
+  Set pOutArray = Nothing
+  vCellValueNE = Null
+  vCellValueNW = Null
+  vCellValueSE = Null
+  vCellValueSW = Null
+
+End Function
+
+Public Function CellValue4CellInterp_Direction(pPoint As IPoint, pRaster As IRaster, _
+    Optional lngBandIndex As Long = 0) As Variant
+
+    Dim pRP As IRasterProps
+    Set pRP = pRaster
+
+    Dim dblCellSizeX As Double
+    Dim dblCellSizeY As Double
+    dblCellSizeX = ReturnPixelWidth(pRaster)
+    dblCellSizeY = ReturnPixelHeight(pRaster)
+
+    Dim dblHalfCellX As Double
+    dblHalfCellX = dblCellSizeX / 2
+    Dim dblHalfCellY As Double
+    dblHalfCellY = dblCellSizeY / 2
+
+    Dim pExtent As IEnvelope
+    Set pExtent = pRP.Extent
+    Dim X1 As Double, Y1 As Double, X2 As Double, Y2 As Double
+    pExtent.QueryCoords X1, Y1, X2, Y2
+
+    Dim pPB As IPixelBlock3
+
+    Dim dWidth As Double, dHeight As Double
+    dWidth = pRP.Width
+    dHeight = pRP.Height
+
+    Dim pPnt As IPnt
+    Set pPnt = New Pnt
+    pPnt.SetCoords 2, 2
+    Set pPB = pRaster.CreatePixelBlock(pPnt)
+
+    Dim pOrigin As IPnt
+
+    Dim lngIndex As Long
+    Dim dblCellValue As Double
+    Dim dx As Double, dy As Double
+    Dim nX As Double, ny As Double
+    Dim dblXRemainder As Double, dblYRemainder As Double
+    Dim iX As Long, iY As Long
+    Dim lngMaxX As Long, lngMaxY As Long
+
+    lngMaxX = pRP.Width - 1
+    lngMaxY = pRP.Height - 1
+
+    Dim bytQuadrant As Byte       ' 1 FOR NE, 2 FOR NW, 3 FOR SW, 4 FOR SE
+    Dim varInterpVal As Variant
+
+    Dim dblPropX As Double
+    Dim dblPropY As Double
+
+    Dim pOutArray As esriSystem.IVariantArray
+    Set pOutArray = New esriSystem.varArray
+
+    Dim vCellValueNE As Variant
+    Dim vCellValueNW As Variant
+    Dim vCellValueSE As Variant
+    Dim vCellValueSW As Variant
+    Dim dblCellWeightNE As Variant
+    Dim dblCellWeightNW As Variant
+    Dim dblCellWeightSE As Variant
+    Dim dblCellWeightSW As Variant
+
+    Dim booIsNull As Boolean
+    Dim dblWestProp As Double
+    Dim dblEastProp As Double
+    Dim dblWeightArray(1, 3) As Double
+
+    If pPoint.x < X1 Or pPoint.x > X2 Or pPoint.Y < Y1 Or pPoint.Y > Y2 Then
+      pOutArray.Add Null
+    Else
+
+      dx = pPoint.x - X1
+      dy = Y2 - pPoint.Y
+
+      nX = dx / dblCellSizeX
+      ny = dy / dblCellSizeY
+
+      iX = Int(nX)
+      iY = Int(ny)
+
+      If (iX < 0) Then iX = 0
+      If (iY < 0) Then iY = 0
+      If (iX > lngMaxX) Then
+        iX = lngMaxX
+      End If
+      If (iY > lngMaxY - 1) Then
+        iY = lngMaxY - 1
+      End If
+
+      dblXRemainder = (nX - iX) * dblCellSizeX
+      dblYRemainder = (ny - iY) * dblCellSizeY
+
+      If dblYRemainder < dblHalfCellY Then                  ' ON NORTH SIDE OF CELL, SOUTH HALF OF PIXEL BLOCK
+        dblPropY = (dblYRemainder + dblHalfCellY) / dblCellSizeY
+        If dblXRemainder > dblHalfCellX Then                ' ON EAST SIDE OF CELL, WEST HALF OF PIXEL BLOCK
+          bytQuadrant = 1                                   ' ON NORTHEAST CORNER OF CELL, SOUTHWEST CORNER OF PIXEL BLOCK
+          dblPropX = 1 - ((dblXRemainder - dblHalfCellX) / dblCellSizeX)
+
+          dblCellWeightNW = dblPropX * (1 - dblPropY)
+          dblCellWeightSW = dblPropX * dblPropY
+          dblCellWeightNE = (1 - dblPropX) * (1 - dblPropY)
+          dblCellWeightSE = (1 - dblPropX) * dblPropY
+        Else                                                ' ON WEST SIDE OF CELL, EAST HALF OF PIXEL BLOCK
+          bytQuadrant = 2                                   ' ON NORTHWEST CORNER OF CELL, SOUTHEAST CORNER OF PIXEL BLOCK
+          dblPropX = (dblHalfCellX + dblXRemainder) / dblCellSizeX
+
+          dblCellWeightNW = (1 - dblPropX) * (1 - dblPropY)
+          dblCellWeightSW = (1 - dblPropX) * dblPropY
+          dblCellWeightNE = dblPropX * (1 - dblPropY)
+          dblCellWeightSE = dblPropX * dblPropY
+        End If
+      Else                                                  ' ON SOUTH SIDE OF CELL, NORTH HALF OF PIXEL BLOCK
+        dblPropY = 1 - ((dblYRemainder - dblHalfCellY) / dblCellSizeY)
+        If dblXRemainder > dblHalfCellX Then                ' ON EAST SIDE, WEST HALF OF PIXEL BLOCK
+          bytQuadrant = 4                                   ' ON SOUTHEAST CORNER OF CELL, NORTHWEST CORNER OF PIXEL BLOCK
+          dblPropX = 1 - ((dblXRemainder - dblHalfCellX) / dblCellSizeX)
+
+          dblCellWeightNW = dblPropX * dblPropY
+          dblCellWeightSW = dblPropX * (1 - dblPropY)
+          dblCellWeightNE = (1 - dblPropX) * dblPropY
+          dblCellWeightSE = (1 - dblPropX) * (1 - dblPropY)
+        Else                                                ' ON WEST SIDE OF CELL, EAST HALF OF PIXEL BLOCK
+          bytQuadrant = 3                                   ' ON SOUTHWEST CORNER OF CELL, NORTHEAST CORNER OF PIXEL BLOCK
+          dblPropX = (dblHalfCellX + dblXRemainder) / dblCellSizeX
+
+          dblCellWeightNW = (1 - dblPropX) * dblPropY
+          dblCellWeightSW = (1 - dblPropX) * (1 - dblPropY)
+          dblCellWeightNE = dblPropX * dblPropY
+          dblCellWeightSE = dblPropX * (1 - dblPropY)
+        End If
+      End If
+
+      Set pOrigin = New Pnt
+
+      dblWeightArray(1, 0) = dblCellWeightNW
+      dblWeightArray(1, 1) = dblCellWeightSW
+      dblWeightArray(1, 2) = dblCellWeightNE
+      dblWeightArray(1, 3) = dblCellWeightSE
+
+      booIsNull = False
+      Select Case bytQuadrant
+        Case 1              ' NORTHEAST                =================
+          If iX = lngMaxX Or iY = 0 Then
+            booIsNull = True
+          Else
+            pOrigin.SetCoords iX, iY - 1
+            pRaster.Read pOrigin, pPB
+            vCellValueNW = pPB.GetVal(lngBandIndex, 0, 0)
+            vCellValueSW = pPB.GetVal(lngBandIndex, 0, 1)
+            vCellValueNE = pPB.GetVal(lngBandIndex, 1, 0)
+            vCellValueSE = pPB.GetVal(lngBandIndex, 1, 1)
+
+            If IsCellNaN(vCellValueNW) Or IsCellNaN(vCellValueNE) Or IsCellNaN(vCellValueSW) Or _
+              IsCellNaN(vCellValueSE) Or IsEmpty(vCellValueNW) Or IsEmpty(vCellValueNE) Or _
+              IsEmpty(vCellValueSW) Or IsEmpty(vCellValueSE) Then
+                  booIsNull = True
+            Else
+
+              dblWeightArray(0, 0) = CDbl(vCellValueNW)
+              dblWeightArray(0, 1) = CDbl(vCellValueSW)
+              dblWeightArray(0, 2) = CDbl(vCellValueNE)
+              dblWeightArray(0, 3) = CDbl(vCellValueSE)
+              varInterpVal = CVar(MyGeometricOperations.ReturnWeightedMeanDir2(dblWeightArray))
+
+            End If
+          End If
+        Case 2              ' NORTHWEST                =================
+          If iX = 0 Or iY = 0 Then
+            booIsNull = True
+          Else
+            pOrigin.SetCoords iX - 1, iY - 1
+            pRaster.Read pOrigin, pPB
+            vCellValueNW = pPB.GetVal(lngBandIndex, 0, 0)
+            vCellValueSW = pPB.GetVal(lngBandIndex, 0, 1)
+            vCellValueNE = pPB.GetVal(lngBandIndex, 1, 0)
+            vCellValueSE = pPB.GetVal(lngBandIndex, 1, 1)
+            If IsCellNaN(vCellValueNW) Or IsCellNaN(vCellValueNE) Or IsCellNaN(vCellValueSW) Or _
+              IsCellNaN(vCellValueSE) Or IsEmpty(vCellValueNW) Or IsEmpty(vCellValueNE) Or _
+              IsEmpty(vCellValueSW) Or IsEmpty(vCellValueSE) Then
+                  booIsNull = True
+            Else
+
+              dblWeightArray(0, 0) = CDbl(vCellValueNW)
+              dblWeightArray(0, 1) = CDbl(vCellValueSW)
+              dblWeightArray(0, 2) = CDbl(vCellValueNE)
+              dblWeightArray(0, 3) = CDbl(vCellValueSE)
+              varInterpVal = CVar(MyGeometricOperations.ReturnWeightedMeanDir2(dblWeightArray))
+
+            End If
+          End If
+        Case 3              ' SOUTHWEST                =================
+          If iX = 0 Or iY = lngMaxY Then
+            booIsNull = True
+          Else
+            pOrigin.SetCoords iX - 1, iY
+            pRaster.Read pOrigin, pPB
+            vCellValueNW = pPB.GetVal(lngBandIndex, 0, 0)
+            vCellValueSW = pPB.GetVal(lngBandIndex, 0, 1)
+            vCellValueNE = pPB.GetVal(lngBandIndex, 1, 0)
+            vCellValueSE = pPB.GetVal(lngBandIndex, 1, 1)
+            If IsCellNaN(vCellValueNW) Or IsCellNaN(vCellValueNE) Or IsCellNaN(vCellValueSW) Or _
+              IsCellNaN(vCellValueSE) Or IsEmpty(vCellValueNW) Or IsEmpty(vCellValueNE) Or _
+              IsEmpty(vCellValueSW) Or IsEmpty(vCellValueSE) Then
+                  booIsNull = True
+            Else
+
+              dblWeightArray(0, 0) = CDbl(vCellValueNW)
+              dblWeightArray(0, 1) = CDbl(vCellValueSW)
+              dblWeightArray(0, 2) = CDbl(vCellValueNE)
+              dblWeightArray(0, 3) = CDbl(vCellValueSE)
+              varInterpVal = CVar(MyGeometricOperations.ReturnWeightedMeanDir2(dblWeightArray))
+
+            End If
+          End If
+        Case 4              ' SOUTHEAST                =================
+          If iX = lngMaxX Or iY = lngMaxY Then
+            booIsNull = True
+          Else
+            pOrigin.SetCoords iX, iY
+            pRaster.Read pOrigin, pPB
+            vCellValueNW = pPB.GetVal(lngBandIndex, 0, 0)
+            vCellValueSW = pPB.GetVal(lngBandIndex, 0, 1)
+            vCellValueNE = pPB.GetVal(lngBandIndex, 1, 0)
+            vCellValueSE = pPB.GetVal(lngBandIndex, 1, 1)
+            If IsCellNaN(vCellValueNW) Or IsCellNaN(vCellValueNE) Or IsCellNaN(vCellValueSW) Or _
+              IsCellNaN(vCellValueSE) Or IsEmpty(vCellValueNW) Or IsEmpty(vCellValueNE) Or _
+              IsEmpty(vCellValueSW) Or IsEmpty(vCellValueSE) Then
+                  booIsNull = True
+            Else
+
+              dblWeightArray(0, 0) = CDbl(vCellValueNW)
+              dblWeightArray(0, 1) = CDbl(vCellValueSW)
+              dblWeightArray(0, 2) = CDbl(vCellValueNE)
+              dblWeightArray(0, 3) = CDbl(vCellValueSE)
+              varInterpVal = CVar(MyGeometricOperations.ReturnWeightedMeanDir2(dblWeightArray))
+
+            End If
+
+          End If
+      End Select
+
+      If booIsNull Then
+        CellValue4CellInterp_Direction = Null
+      Else
+        CellValue4CellInterp_Direction = CDbl(varInterpVal)
       End If
 
         "   dblPropX = " & CStr(dblPropX) & vbCrLf & _

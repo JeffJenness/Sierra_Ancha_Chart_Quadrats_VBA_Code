@@ -7,7 +7,12 @@ Attribute RunAsBatch.VB_ProcData.VB_Invoke_Func = ""
   Dim lngTimeStart As Long
   lngTimeStart = GetTickCount
 
-  Margaret_Functions_3.ExportSubsetsOfSpeciesShapefiles_v2 True, False, False, True
+  More_Margaret_Functions.SummarizeSpeciesBySite_SA
+  More_Margaret_Functions.SummarizeSpeciesByCorrectQuadrat_SA
+  More_Margaret_Functions.SummarizeYearByCorrectQuadratByYear_SA
+  SierraAncha_Compare.GenerateRData
+
+  CreateFinalTables_SA
 
   Debug.Print "============================"
   Debug.Print "Batch Process Complete:"
@@ -681,7 +686,7 @@ Public Function ReturnSAEnvironmentalData() As Collection
     pPoint.Project pGeoSpRef
 
     dblElev = GridFunctions.CellValue4CellInterp(pPoint, pDEM)
-    dblAspect = GridFunctions.CellValue2(pPoint, pAspect)
+    dblAspect = GridFunctions.CellValue4CellInterp_Direction(pPoint, pAspect)
     dblSlope = MyGeometricOperations.DegToPercent(GridFunctions.CellValue4CellInterp(pPoint, pSlope))
 
     If MyGeneralOperations.CheckCollectionForKey(pParentMaterialColl, strPlot) Then
@@ -1740,6 +1745,7 @@ Public Sub CreateFinalTables_SA()
   pVegComment.Add "Previously known as Machaeranthera canescens", "Dieteria canescens"
   pVegComment.Add "Previously known as Machaeranthera gracilis", "Xanthisma gracile"
   pVegComment.Add "Previously known as Noccaea montana", "Noccaea fendleri"
+  pVegComment.Add "Previously known as Ayenia pusilla", "Ayenia insulicola"
   pVegComment.Add "Mat forming perennial forb", "Antennaria parvifolia"
   pVegComment.Add "Mat forming perennial forb", "Antennaria rosulata"
   pVegComment.Add "Mat forming perennial forb", "Arenaria lanuginosa"
